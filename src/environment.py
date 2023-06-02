@@ -6,5 +6,9 @@ class EnvironmentSettings:
         'DailyDataDir': "daily",
         'HistoricalDataDir': "historical",
         'BhavDataDir': "bhavcopy",
-        'NseIndicesDataDir': "nse_indices"
+        'NseIndicesDataDir': "nse_indices",
+        'ManualDataPath': "../manual_data"
+    }
+    Development = {
+        "InstrumentationLevel": 1 | 2 | 4
     }

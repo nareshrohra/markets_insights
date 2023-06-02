@@ -5,8 +5,9 @@ import os
 from string import Template
 import pandas as pd
 from urllib.error import HTTPError
+from datetime import date
 
-from core import MarketDaysHelper
+from core import MarketDaysHelper, Instrumentation
 
 class ReaderOptions:
   filename = Template("")
@@ -15,6 +16,7 @@ class ReaderOptions:
   unzip_path_template = Template("")
   primary_data_path_template = Template("")
   unzip_file = True
+  cutoff_date = None
 
   download_timeout = 5 #seconds
    
@@ -42,10 +44,10 @@ class DataReader:
     primary_data_file_path = self.options.primary_data_path_template.substitute( **({**EnvironmentSettings.Paths, **filenames}) )
 
     if not os.path.exists(output_file_path):
-      print(f"Downloading data for {for_date}")
+      Instrumentation.debug(f"Downloading data for {for_date}")
       url = self.options.url_template.substitute( **({**date_parts, **filenames}) )
 
-      print(url)
+      Instrumentation.debug(url)
       
       urldata = urlopen(url, timeout=self.options.download_timeout)
       with open(output_file_path,'wb') as output:
@@ -57,7 +59,8 @@ class DataReader:
 
     #print(primary_data_file_path)
     
-    return self.read_data_from_file(for_date, primary_data_file_path)
+    data = self.read_data_from_file(for_date, primary_data_file_path)
+    return self.filter_data(data)
 
   def unzip_content(self, output_file_path, unzip_folder_path, for_date):
     zf = ZipFile(output_file_path)
@@ -71,6 +74,12 @@ class DataReader:
 
   def get_filenames(self, for_date):
     return Exception("Not implemented!")
+
+  def get_column_name_mappings(self):
+    return None
+  
+  def filter_data(self, data):
+    return data
 
 class BhavCopyReader(DataReader):
   def __init__(self):
@@ -89,6 +98,19 @@ class BhavCopyReader(DataReader):
       'download_filename': f"cm{__formatted_date}bhav.csv.zip",
       'primary_data_filename':  f"cm{__formatted_date}bhav.csv"
     }
+  
+  def get_column_name_mappings(self):
+    return {
+      'SYMBOL': 'Identifier',
+      'TOTTRDVAL': 'Turnover (Rs. Cr.)',
+      'OPEN': 'Open',
+      'HIGH': 'High',
+      'LOW': 'Low',
+      'CLOSE': 'Close'
+    }
+
+  def filter_data(self, data):
+    return data[data['SERIES'] == 'EQ'].reset_index(drop=True)
 
 class NseIndicesReader(DataReader):
   def __init__(self):
@@ -99,12 +121,22 @@ class NseIndicesReader(DataReader):
     self.options.url_template = Template(__base_url + "$download_filename")
     self.options.output_path_template = Template("$DataBaseDir/$RawDataDir/$NseIndicesDataDir/$download_filename")
     self.options.primary_data_path_template = Template("$DataBaseDir/$RawDataDir/$NseIndicesDataDir/$download_filename")
+    self.options.cutoff_date = date.fromisoformat("2013-01-01")
 
   def get_filenames(self, for_date):
     __formatted_date = for_date.strftime('%d%m%Y').upper()
     return {
       'download_filename': f"ind_close_all_{__formatted_date}.csv",
       'primary_data_filename':  f"ind_close_all_{__formatted_date}.csv"
+    }
+  
+  def get_column_name_mappings(self):
+    return {
+      'Index Name': 'Identifier',
+      'Open Index Value': 'Open',
+      'High Index Value': 'High',
+      'Low Index Value': 'Low',
+      'Closing Index Value': 'Close'
     }
 
 class DateRangeDataReader:
@@ -114,6 +146,7 @@ class DateRangeDataReader:
     self.reader = reader
   
   def read(self, from_date, to_date):
+    
     datelist = MarketDaysHelper.get_days_list_for_range(from_date, to_date)
     result = None
     for for_date in datelist:
@@ -123,7 +156,8 @@ class DateRangeDataReader:
               if result is None:
                   result = data
               else:
-                  result = pd.concat([result, data], ignore_index=True)
-            except HTTPError as e:
-              print(e, for_date)
+                  result = pd.concat([result, data], ignore_index=True).reset_index(drop=True)
+            except Exception as e:
+              print(e, for_date.strftime('date(%Y, %m, %d),'))
+            
     return result
