@@ -52,7 +52,9 @@ class ManualDataProcessor(DataProcessor):
 
 class HistoricalDataProcessor(DataProcessor):
   def __init__(self):
-    self.output_dir_template = Template("$DataBaseDir/$ProcessedDataDir/$HistoricalDataDir") 
+    self.output_dir_template = Template("$DataBaseDir/$ProcessedDataDir/$HistoricalDataDir/")
+    self.monthly_group_data_filename = Template("$ReaderName-$MonthlySuffix.csv")
+    self.annual_group_data_filename = Template("$ReaderName-$AnnualSuffix.csv")
 
   def process(self, reader: DataReader, options: dict):
     from_date = MarketDaysHelper.get_this_or_next_market_day(options['from_date'])
@@ -71,6 +73,13 @@ class HistoricalDataProcessor(DataProcessor):
     yearly_grouped = self.add_yearly_growth_calc(processed_data)
     monthly_grouped = self.add_monthly_growth_calc(processed_data)
 
+    output_path = self.output_dir_template.substitute(**EnvironmentSettings.Paths)
+    monthly_data_filename = self.monthly_group_data_filename.substitute({**EnvironmentSettings.Paths, 'ReaderName': reader.name})
+    annual_data_filename = self.annual_group_data_filename.substitute({**EnvironmentSettings.Paths, 'ReaderName': reader.name})
+
+    monthly_grouped.last().reset_index().to_csv(output_path + monthly_data_filename)
+    yearly_grouped.last().reset_index().to_csv(output_path + annual_data_filename)
+    
     return {
       'processed_data': processed_data, 
       'yearly_grouped': yearly_grouped, 
