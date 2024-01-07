@@ -1,70 +1,70 @@
 
-  # Markets Data Manager 📝  
-  This package fetches and processes capital markets data from NSE (National Stock Exchange, India). Following data can be retrieved
-  1. Index (Nifty, Bank Nifty, NiftyIT)
-  2. Stocks
-  3. Derivatives (Futures and Options)
-  
-  The package can perform technical functions on price of Index and Stocks. Following functions are supported.
+# Markets Data Manager 📝  
+This package fetches and processes capital markets data from NSE (National Stock Exchange, India). Following data can be retrieved
+1. Index (Nifty, Bank Nifty, NiftyIT)
+2. Stocks
+3. Derivatives (Futures and Options)
 
-  1. Simple Moving Averages (SMA)
-  2. Relative Strength Index (RSI)
-  3. Stochastic RSI
-  4. Bollinger Bands (with standard deviations)
-  
-  The calculation pipeline is quite extensible and more functions can be added externally.
+The package can perform technical functions on price of Index and Stocks. Following functions are supported.
 
-  ## Getting Started 🚀
-  ### Get Index data for date range
-  ```python
-  from datareader.data_reader import NseIndicesReader
-  reader = NseIndicesReader()
+1. Simple Moving Averages (SMA)
+2. Relative Strength Index (RSI)
+3. Stochastic RSI
+4. Bollinger Bands (with standard deviations)
 
-  from datareader.data_reader import DateRangeDataReader
-  daterange_reader = DateRangeDataReader(reader)
+The calculation pipeline is quite extensible and more functions can be added externally.
 
-  from_date = datetime.date(1990, 1, 1)
-  to_date = datetime.date.today() + datetime.timedelta(days=-1)
-  result = daterange_reader.read(from_date = from_date, to_date = to_date)
-  ```
+## Getting Started 🚀
+### Get Index data for date range
+```python
+from datareader.data_reader import NseIndicesReader
+reader = NseIndicesReader()
 
-  ### Calculation pipeline for RSI
-  Below example demonstrates calculating RSI using the calculation pipeline. The datepart calculation is pre-requisite for RSI calculation.
+from datareader.data_reader import DateRangeDataReader
+daterange_reader = DateRangeDataReader(reader)
 
-  ```python
-  # import classes & setup options
-  from dataprocess.data_processor import HistoricalDataProcessor, MultiDataCalculationPipelines, CalculationPipelineBuilder, HistoricalDataProcessOptions
-  from calculations.base import DatePartsCalculationWorker
-  options = HistoricalDataProcessOptions()
-  options.include_monthly_data = False
-  options.include_annual_data = False
-  histDataProcessor = HistoricalDataProcessor(options)
+from_date = datetime.date(1990, 1, 1)
+to_date = datetime.date.today() + datetime.timedelta(days=-1)
+result = daterange_reader.read(from_date = from_date, to_date = to_date)
+```
 
-  # Fetch the data
-  year_start = datetime.date(2023, 1, 1)
-  to_date = datetime.date.today() + datetime.timedelta(days=-1)
-  result = histDataProcessor.process(reader, {'from_date': year_start, 'to_date': to_date})
+### Calculation pipeline for RSI
+Below example demonstrates calculating RSI using the calculation pipeline. The datepart calculation is pre-requisite for RSI calculation.
 
-  # Prepare calculation pipeline
-  pipelines = MultiDataCalculationPipelines()
-  pipelines.set_item('date_parts', CalculationPipelineBuilder.create_pipeline_for_worker(DatePartsCalculationWorker()))
-  pipelines.set_item('rsi', CalculationPipelineBuilder.create_rsi_calculation_pipeline())
-  histDataProcessor.set_calculation_pipelines(pipelines)
+```python
+# import classes & setup options
+from dataprocess.data_processor import HistoricalDataProcessor, MultiDataCalculationPipelines, CalculationPipelineBuilder, HistoricalDataProcessOptions
+from calculations.base import DatePartsCalculationWorker
+options = HistoricalDataProcessOptions()
+options.include_monthly_data = False
+options.include_annual_data = False
+histDataProcessor = HistoricalDataProcessor(options)
 
-  # Run the pipeline
-  histDataProcessor.run_calculation_pipelines()
-  result.get_daily_data()
-  ```
+# Fetch the data
+year_start = datetime.date(2023, 1, 1)
+to_date = datetime.date.today() + datetime.timedelta(days=-1)
+result = histDataProcessor.process(reader, {'from_date': year_start, 'to_date': to_date})
 
-  ### A real use case: Understand the affect of RSI and Stochastic RSI on price
+# Prepare calculation pipeline
+pipelines = MultiDataCalculationPipelines()
+pipelines.set_item('date_parts', CalculationPipelineBuilder.create_pipeline_for_worker(DatePartsCalculationWorker()))
+pipelines.set_item('rsi', CalculationPipelineBuilder.create_rsi_calculation_pipeline())
+histDataProcessor.set_calculation_pipelines(pipelines)
+
+# Run the pipeline
+histDataProcessor.run_calculation_pipelines()
+result.get_daily_data()
+```
+
+### A real use case: Understand the affect of RSI and Stochastic RSI on price
 In this use case, understand the affect of RSI and Stochastic RSI on price
 
-## Preparing the data
+#### Preparing the data
 - Calculate RSI and Stochastic RSI for each day.
 - Add a flag for whenever the RSI crosses the control limits (eg: above 75 and below 30)
 - Calculate the highest and lowest price change in the next 10 trading sessions.
 
-## Analyse
+#### Analyse
 - Find the median for highest price change and lowest price change whenever the RSI crosses the threshold.
 
 ```python
@@ -89,15 +89,15 @@ from core.column_definition import BaseColumns, CalculatedColumns
 
 # get names of fwd looking price column names. Since, these column names are auto-generated there no constants for them
 fwd_looking_price_fall_cols, fwd_looking_price_rise_cols = [x for x in daily_data.columns if 'HighestPercFallInNext' in x], \
-    [x for x in daily_data.columns if 'HighestPercRiseInNext' in x]
+  [x for x in daily_data.columns if 'HighestPercRiseInNext' in x]
 
 # analyse the median price change % for highest price fall whenever the RSI crosses above
 daily_data[
-  (daily_data[CalculatedColumns.RsiCrossedAbove])
+(daily_data[CalculatedColumns.RsiCrossedAbove])
 ][fwd_looking_price_fall_cols].median()
 
 # analyse the median price change % for highest price rise whenever the RSI crosses below
 daily_data[
-  (daily_data[CalculatedColumns.RsiCrossedAbove])
+(daily_data[CalculatedColumns.RsiCrossedAbove])
 ][fwd_looking_price_rise_cols].median()
 ```
