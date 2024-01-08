@@ -1,5 +1,6 @@
 
 # Markets Data Manager 📝  
+## Introduction
 This package fetches and processes capital markets data from NSE (National Stock Exchange, India). Following data can be retrieved
 1. Index (Nifty, Bank Nifty, NiftyIT)
 2. Stocks
