@@ -56,8 +56,8 @@ histDataProcessor.run_calculation_pipelines()
 result.get_daily_data()
 ```
 
-### A real use case: Understand the affect of RSI and Stochastic RSI on price
-In this use case, understand the affect of RSI and Stochastic RSI on price
+### A real use case: Understand the affect of RSI on price
+In this use case, we will understand the future affect of stock price when it crosses above and below the RSI threshold (i.e. >=75 or <=30)
 
 #### Preparing the data
 - Calculate RSI and Stochastic RSI for each day.
@@ -74,7 +74,6 @@ periods = [1, 7, 15, 30, 45]
 pipelines = MultiDataCalculationPipelines()
 pipelines.set_item('date_parts', CalculationPipelineBuilder.create_pipeline_for_worker(DatePartsCalculationWorker()))
 pipelines.set_item('rsi', CalculationPipelineBuilder.create_rsi_calculation_pipeline(crossing_above_flag_value = 75, crossing_below_flag_value = 30, window = 14))
-pipelines.set_item('stoch_rsi', CalculationPipelineBuilder.create_stoch_rsi_calculation_pipeline(crossing_above_flag_value = 80, crossing_below_flag_value = 20, window = 14))
 pipelines.set_item('foward_looking_fall', CalculationPipelineBuilder.create_forward_looking_price_fall_pipeline(periods))
 pipelines.set_item('foward_looking_rise', CalculationPipelineBuilder.create_forward_looking_price_rise_pipeline(periods))
 histDataProcessor.set_calculation_pipelines(pipelines=pipelines)
