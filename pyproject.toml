@@ -2,7 +2,7 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 [project]
-name = "market_insights"
+name = "markets_insights"
 version = "0.0.1"
 authors = [
   { name="Naresh Rohra", email="naresh.rohra@hotmail.com" },
@@ -16,25 +16,25 @@ classifiers = [
 ]
 [tool.hatch.build.targets.wheel]
 packages = [
-  "src/market_insights", 
-  "src/market_insights.calculations", 
-  "src/market_insights.calculations.base",
-  "src/market_insights.calculations.derivatives",
-  "src/market_insights.calculations.equity", 
-  "src/market_insights.core",
-  "src/market_insights.core.core",
-  "src/market_insights.core.column_definition",
-  "src/market_insights.core.environment",
-  "src/market_insights.core.settings",
-  "src/market_insights.dataprocess", 
-  "src/market_insights.dataprocess.data_processor",
-  "src/market_insights.datareader", 
-  "src/market_insights.datareader.data_reader", 
-  "src/market_insights.trade_builders",
-  "src/market_insights.trade_builders.derivatives",
-  "src/market_insights.trade_builders.results"
+  "src/markets_insights", 
+  "src/markets_insights.calculations", 
+  "src/markets_insights.calculations.base",
+  "src/markets_insights.calculations.derivatives",
+  "src/markets_insights.calculations.equity", 
+  "src/markets_insights.core",
+  "src/markets_insights.core.core",
+  "src/markets_insights.core.column_definition",
+  "src/markets_insights.core.environment",
+  "src/markets_insights.core.settings",
+  "src/markets_insights.dataprocess", 
+  "src/markets_insights.dataprocess.data_processor",
+  "src/markets_insights.datareader", 
+  "src/markets_insights.datareader.data_reader", 
+  "src/markets_insights.trade_builders",
+  "src/markets_insights.trade_builders.derivatives",
+  "src/markets_insights.trade_builders.results"
 ]
 
 [project.urls]
-Homepage = "https://github.com/nareshrohra/market_insights/"
-Issues = "https://github.com/nareshrohra/market_insights/issues"
+Homepage = "https://github.com/nareshrohra/markets_insights/"
+Issues = "https://github.com/nareshrohra/markets_insights/issues"
