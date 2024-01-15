@@ -1,15 +1,15 @@
-import market_insights as mi
+import markets_insights as mi
 
 from urllib.request import urlopen
 from zipfile import ZipFile
-from market_insights.core.environment import EnvironmentSettings
+from markets_insights.core.environment import EnvironmentSettings
 import os
 from string import Template
 import pandas as pd
 from urllib.error import HTTPError
 from datetime import date
 
-from market_insights.core.core import MarketDaysHelper, Instrumentation
+from markets_insights.core.core import MarketDaysHelper, Instrumentation
 
 class ReaderOptions:
   filename = Template("")

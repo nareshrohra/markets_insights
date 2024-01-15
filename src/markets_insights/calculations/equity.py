@@ -1,11 +1,11 @@
-from market_insights.core.column_definition import BaseColumns, CalculatedColumns, DerivativesBaseColumns, DerivativesCalculatedColumns
-from market_insights.core.core import Instrumentation
-from market_insights.calculations.base import CalculationWorker
+from markets_insights.core.column_definition import BaseColumns, CalculatedColumns, DerivativesBaseColumns, DerivativesCalculatedColumns
+from markets_insights.core.core import Instrumentation
+from markets_insights.calculations.base import CalculationWorker
 import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from market_insights.datareader.data_reader import NseDerivatiesOldReader
-from market_insights.core.core import MarketDaysHelper
+from markets_insights.datareader.data_reader import NseDerivatiesOldReader
+from markets_insights.core.core import MarketDaysHelper
 
 class LowestPriceInNextNDaysCalculationWorker (CalculationWorker):
   def __init__(self, time_window):

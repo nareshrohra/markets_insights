@@ -1,5 +1,5 @@
-from market_insights.core.settings import MarketDaysSettings
-from market_insights.core.environment import EnvironmentSettings
+from markets_insights.core.settings import MarketDaysSettings
+from markets_insights.core.environment import EnvironmentSettings
 from datetime import date
 import time
 import pandas as pd

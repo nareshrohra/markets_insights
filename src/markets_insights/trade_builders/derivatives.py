@@ -1,10 +1,10 @@
-from market_insights.core.column_definition import DerivativesBaseColumns, DerivativesCalculatedColumns
-from market_insights.core.core import TypeHelper, MarketDaysHelper
+from markets_insights.core.column_definition import DerivativesBaseColumns, DerivativesCalculatedColumns
+from markets_insights.core.core import TypeHelper, MarketDaysHelper
 import datetime
 import pandas as pd
 import numpy as np
 
-from market_insights.trade_builders.results import BiDirectionalTradesResult, TradesResultComposite, TradesResult
+from markets_insights.trade_builders.results import BiDirectionalTradesResult, TradesResultComposite, TradesResult
 
 class DerivativeTradeOptions:
   holding_days: int = 7

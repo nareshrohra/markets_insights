@@ -1,5 +1,5 @@
-from market_insights.core.column_definition import DerivativesBaseColumns, DerivativesCalculatedColumns
-from market_insights.core.core import TypeHelper
+from markets_insights.core.column_definition import DerivativesBaseColumns, DerivativesCalculatedColumns
+from markets_insights.core.core import TypeHelper
 import pandas as pd
 import datetime
 import os

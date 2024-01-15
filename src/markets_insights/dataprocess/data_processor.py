@@ -1,13 +1,13 @@
-from market_insights.core.environment import EnvironmentSettings
+from markets_insights.core.environment import EnvironmentSettings
 import os
 from string import Template
 import pandas as pd
-from market_insights.datareader.data_reader import DataReader, DateRangeDataReader
-from market_insights.core.column_definition import BaseColumns, CalculatedColumns
-from market_insights.core.core import MarketDaysHelper, Instrumentation
-from market_insights.core.column_definition import BaseColumns
-from market_insights.calculations.equity import LowestPriceInNextNDaysCalculationWorker, HighestPriceInNextNDaysCalculationWorker
-from market_insights.calculations.base import CalculationWorker, CalculationPipeline, \
+from markets_insights.datareader.data_reader import DataReader, DateRangeDataReader
+from markets_insights.core.column_definition import BaseColumns, CalculatedColumns
+from markets_insights.core.core import MarketDaysHelper, Instrumentation
+from markets_insights.core.column_definition import BaseColumns
+from markets_insights.calculations.equity import LowestPriceInNextNDaysCalculationWorker, HighestPriceInNextNDaysCalculationWorker
+from markets_insights.calculations.base import CalculationWorker, CalculationPipeline, \
   SmaCalculationWorker, RsiCalculationWorker, BollingerBandCalculationWorker, StochRsiCalculationWorker, \
   ValueCrossedAboveFlagWorker, ValueCrossedBelowFlagWorker, PriceCrossedAboveValueFlagWorker, PriceCrossedBelowValueFlagWorker, \
   StdDevCalculationWorker

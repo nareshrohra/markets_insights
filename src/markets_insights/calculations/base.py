@@ -1,6 +1,6 @@
   
-from market_insights.core.core import Instrumentation
-from market_insights.core.column_definition import BaseColumns, CalculatedColumns
+from markets_insights.core.core import Instrumentation
+from markets_insights.core.column_definition import BaseColumns, CalculatedColumns
 import pandas as pd
 import pandas_ta as ta
 

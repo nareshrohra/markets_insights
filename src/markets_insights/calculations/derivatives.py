@@ -1,6 +1,6 @@
-from market_insights.core.column_definition import DerivativesBaseColumns, DerivativesCalculatedColumns
-from market_insights.core.core import Instrumentation
-from market_insights.dataprocess.data_processor import CalculationWorker
+from markets_insights.core.column_definition import DerivativesBaseColumns, DerivativesCalculatedColumns
+from markets_insights.core.core import Instrumentation
+from markets_insights.dataprocess.data_processor import CalculationWorker
 import pandas as pd
 
 class DerivativesPriceCalculationWorker (CalculationWorker):
