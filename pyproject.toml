@@ -1,22 +1,40 @@
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-[tool.hatch.build.targets.wheel]
-packages = ["sphinx-lint"]
 [project]
-name = "markets-data-manager"
-version = "1.0.1"
+name = "market_insights"
+version = "0.0.1"
 authors = [
   { name="Naresh Rohra", email="naresh.rohra@hotmail.com" },
 ]
-description = "This package fetches and processes capital markets data from NSE (National Stock Exchange, India)"
+description = "This package retrieves and handles financial market data from the National Stock Exchange (NSE) in India."
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
+[tool.hatch.build.targets.wheel]
+packages = [
+  "src/market_insights", 
+  "src/market_insights.calculations", 
+  "src/market_insights.calculations.base",
+  "src/market_insights.calculations.derivatives",
+  "src/market_insights.calculations.equity", 
+  "src/market_insights.core",
+  "src/market_insights.core.core",
+  "src/market_insights.core.column_definition",
+  "src/market_insights.core.environment",
+  "src/market_insights.core.settings",
+  "src/market_insights.dataprocess", 
+  "src/market_insights.dataprocess.data_processor",
+  "src/market_insights.datareader", 
+  "src/market_insights.datareader.data_reader", 
+  "src/market_insights.trade_builders",
+  "src/market_insights.trade_builders.derivatives",
+  "src/market_insights.trade_builders.results"
+]
 
 [project.urls]
-Homepage = "https://github.com/nareshrohra/markets-data-manager/"
-Issues = "https://github.com/nareshrohra/markets-data-manager/issues"
+Homepage = "https://github.com/nareshrohra/market_insights/"
+Issues = "https://github.com/nareshrohra/market_insights/issues"
