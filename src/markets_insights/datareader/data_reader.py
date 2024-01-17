@@ -242,10 +242,11 @@ class MultiDatesDataReader:
             
     return result
   
-class DateRangeDataReader:
+class DateRangeDataReader (DataReader):
   reader: DataReader
 
   def __init__(self, reader: DataReader):
+    super().__init__()
     self.reader = reader
   
   def read(self, from_date, to_date):

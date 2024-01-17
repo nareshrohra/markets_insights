@@ -258,18 +258,6 @@ class HistoricalDataProcessor(DataProcessor):
         (x - x.iloc[0]) / x.iloc[0] * 100      
       )
     
-    # processed_data['Historic High'] = self.dataset.get_identifier_grouped()['High'].transform(lambda x:
-    #     x.expanding().max()    
-    #   )
-    
-    # processed_data['ATH'] = identifier_grouped['Date'].transform( lambda x :
-    #                           identifier_grouped['High'][identifier_grouped['Date'] <= (x + timedelta(days=self.historic_highs_reset_days))].max()
-    #                         )
-
-    #for identifier in processed_data['Identifier'].unique():
-    #  processed_data.loc[processed_data['Identifier'] == identifier, 'ATH'] = processed_data[processed_data['Identifier'] == identifier]['High'].expanding().max()
-
-    #processed_data['Low From Historic High'] = (processed_data['Close'] - processed_data['Historic High']) / processed_data['Historic High'] * 100
     return processed_data
 
   def add_periodic_growth_calc(self, processed_data, period, label):
@@ -329,13 +317,16 @@ class HistoricalDataProcessor(DataProcessor):
   def get_data(self, reader: DataReader, options: dict, from_date: date, to_date: date):
     Instrumentation.debug("Started to read data")
     output_file = os.path.join(self.output_dir_template.substitute(**EnvironmentSettings.Paths), 
-                               self.filename_template.substitute(**{'ReaderName': reader.name}))
+                              self.filename_template.substitute(**{'ReaderName': reader.name}))
     
-    if reader.options.cutoff_date is not None and from_date < reader.options.cutoff_date:
+    if reader.options is not None and reader.options.cutoff_date is not None and from_date < reader.options.cutoff_date:
       Instrumentation.debug(f"Reading from {reader.options.cutoff_date} instead of {from_date}")
       from_date = reader.options.cutoff_date
     
-    dateRangeReader = DateRangeDataReader(reader)
+    if isinstance(reader, DateRangeDataReader):
+      dateRangeReader = reader
+    else:
+      dateRangeReader = DateRangeDataReader(reader)
     
     save_to_file = False
 

@@ -132,3 +132,108 @@ HighestPercRiseInNext7Days     2.640740
 HighestPercRiseInNext10Days    3.314917
 dtype: float64
 ```
+
+### Extending a new Data Reader
+In this example we will create a new data reader to read data for Nasdaq listed equities. We will use **yfinance** python library for this.
+
+#### Import classes
+```python
+from markets_insights.datareader.data_reader import DateRangeDataReader
+from markets_insights.core.core import Instrumentation
+from markets_insights.core.column_definition import BaseColumns
+
+import yfinance as yf
+import pandas
+```
+
+#### Create reader class
+We will create a class that extends the base reader. yfinance library can read data for a range. So, we will extend *DateRangeDataReader* class. With yfinance library, we have to specify which equity/tickers we want to download. For the sake of this example, we will download for top 7 companies of Nasdaq.
+
+```python
+class NasdaqDataReader (DateRangeDataReader):
+  def __init__(self, tickers: list = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'TSLA', 'NVDA']):
+    super().__init__(reader=None)
+    self.tickers = tickers
+    self.name = "NasdaqDataReader"
+
+  @Instrumentation.trace(name="NasdaqDataReader.read")
+  def read(self, from_date, to_date):
+    df_list = list()
+    for ticker in self.tickers:
+        data = yf.download(ticker, group_by="Ticker", start=from_date, end=to_date)
+        data['ticker'] = ticker
+        df_list.append(data)
+
+    # combine all dataframes into a single dataframe
+    df = pandas.concat(df_list)
+
+    data = df.reset_index().rename(columns = self.get_column_name_mappings())
+    data[BaseColumns.Date] = pandas.to_datetime(data[BaseColumns.Date])
+    return data
+  
+  def get_column_name_mappings(self):
+    return {
+      'ticker': BaseColumns.Identifier,
+      'OPEN': BaseColumns.Open,
+      'HIGH': BaseColumns.High,
+      'LOW': BaseColumns.Low,
+      'CLOSE': BaseColumns.Close
+    }
+```
+
+*Notice here we are renaming the columns to standard column names so that the calculation pipeline can read them properly.*
+
+#### Running the calculation pipeline
+The calculation pipeline will not be different except we will pass NasdaqDataReader instance.
+
+```python
+# import classes & setup options
+from markets_insights.dataprocess.data_processor import HistoricalDataProcessor, MultiDataCalculationPipelines, CalculationPipelineBuilder, HistoricalDataProcessOptions
+from markets_insights.calculations.base import DatePartsCalculationWorker
+
+reader = NasdaqDataReader()
+options = HistoricalDataProcessOptions()
+options.include_monthly_data = False
+options.include_annual_data = False
+histDataProcessor = HistoricalDataProcessor(options)
+
+# Fetch the data
+year_start = datetime.date(2023, 1, 1)
+to_date = datetime.date(2023, 12, 31)
+result = histDataProcessor.process(reader, {'from_date': year_start, 'to_date': to_date})
+
+# Prepare calculation pipeline
+pipelines = MultiDataCalculationPipelines()
+pipelines.set_item('date_parts', CalculationPipelineBuilder.create_pipeline_for_worker(DatePartsCalculationWorker()))
+pipelines.set_item('rsi', CalculationPipelineBuilder.create_rsi_calculation_pipeline())
+histDataProcessor.set_calculation_pipelines(pipelines)
+
+# Run the pipeline
+histDataProcessor.run_calculation_pipelines()
+```
+
+Here's the code to display results
+```python
+from markets_insights.core.column_definition import CalculatedColumns
+
+result.get_daily_data() \
+  .sort_values(
+    [BaseColumns.Date, BaseColumns.Identifier]
+  )[
+    [BaseColumns.Identifier, BaseColumns.Date, BaseColumns.Close, 
+     CalculatedColumns.RelativeStrengthIndex]
+  ] \
+  .tail(5)
+```
+
+*Output*
+
+|      | Identifier   | Date                |   Close |     Rsi |
+|-----:|:-------------|:--------------------|--------:|--------:|
+|  248 | AAPL         | 2023-12-28 00:00:00 |  193.58 | 54.4815 |
+|  497 | AMZN         | 2023-12-28 00:00:00 |  153.38 | 63.9387 |
+|  746 | GOOGL        | 2023-12-28 00:00:00 |  140.23 | 61.585  |
+|  995 | META         | 2023-12-28 00:00:00 |  358.32 | 70.2377 |
+| 1244 | MSFT         | 2023-12-28 00:00:00 |  375.28 | 56.909  |
+| 1493 | NVDA         | 2023-12-28 00:00:00 |  495.22 | 58.305  |
+| 1742 | TSLA         | 2023-12-28 00:00:00 |  253.18 | 55.9788 |
