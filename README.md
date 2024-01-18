@@ -5,14 +5,16 @@ This package fetches and processes capital markets data from NSE (National Stock
 2. Stocks
 3. Derivatives (Futures and Options)
 
-The package can perform technical functions on price of Index and Stocks. Following functions are supported.
+*Support for additional markets and instruments can be added externally*
+
+The package can perform technical functions on price of Index and Stocks. Following indicators are supported.
 
 1. Simple Moving Averages (SMA)
 2. Relative Strength Index (RSI)
 3. Stochastic RSI
 4. Bollinger Bands (with standard deviations)
 
-The calculation pipeline is quite extensible and more functions can be added externally.
+The calculation pipeline is quite extensible and more idicators can be added externally.
 
 ## Getting Started 🚀
 ### Installation
@@ -133,7 +135,7 @@ HighestPercRiseInNext10Days    3.314917
 dtype: float64
 ```
 
-### Extending a new Data Reader
+### Creating a DataReader
 In this example we will create a new data reader to read data for Nasdaq listed equities. We will use **yfinance** python library for this.
 
 #### Import classes
@@ -237,3 +239,78 @@ result.get_daily_data() \
 | 1244 | MSFT         | 2023-12-28 00:00:00 |  375.28 | 56.909  |
 | 1493 | NVDA         | 2023-12-28 00:00:00 |  495.22 | 58.305  |
 | 1742 | TSLA         | 2023-12-28 00:00:00 |  253.18 | 55.9788 |
+
+### Creating a CalculationWorker
+In this example, we will create a CalculationWorker to calcualte the Fibonacci Retracement level for any equity or index. Finbonacci Retracement levels are based on a time window and a level (26.3%, 50% etc). So, these will become input to our CalculationWorker. Lets call this worker as **FibnocciRetracementCalculationWorker**
+
+#### Implement the worker class. The important aspect here is to override the `add_calculated_columns()` method
+```python
+## import modules
+from markets_insights.calculations.base import CalculationWorker
+from markets_insights.core.core import Instrumentation
+from markets_insights.calculations.base import BaseColumns
+import pandas
+
+class FibnocciRetracementCalculationWorker (CalculationWorker):
+  def __init__(self, time_window: int, level_perct: float):
+    self._time_window = time_window
+    self._level = level_perct / 100
+    self._column_name = 'Fbr' + str(level_perct)
+
+  @Instrumentation.trace(name="FibnocciRetracementCalculationWorker")
+  def add_calculated_columns(self, data: pandas.DataFrame):
+    identifier_grouped_data: pandas.DataFrame = data.groupby(BaseColumns.Identifier)
+    #Since, our dataframe may contain data for multiple symbols, we need to first group them by Identifier
+    data[self._column_name] = identifier_grouped_data[BaseColumns.Close].transform(
+        lambda x: 
+          x.rolling(self._time_window).max() - 
+          (
+            (x.rolling(self._time_window).max() - x.rolling(self._time_window).min())  * self._level
+          )
+      )
+```
+#### Create pipline with the FibnocciRetracementCalculationWorker and run
+Now, that our worker is created let us use it in a calculation pipeline. We can use it with any instrument (index, stock) that are supported. Event for the Nasdaq instruments that were supported in earlier examples. For this example, let us take NSE Indexes.
+```python
+from markets_insights.datareader.data_reader import NseIndicesReader
+from markets_insights.dataprocess.data_processor import HistoricalDataProcessor, HistoricalDataProcessOptions, \
+  MultiDataCalculationPipelines, CalculationPipeline
+histDataProcessor = HistoricalDataProcessor(HistoricalDataProcessOptions(include_monthly_data=False, include_annual_data=False))
+
+# Fetch the data
+result = histDataProcessor.process(NseIndicesReader(), {'from_date': datetime.date(2023, 12, 1), 'to_date': datetime.date(2023, 12, 31)})
+
+# Prepare calculation pipeline
+fbr50_worker = FibnocciRetracementCalculationWorker(time_window=7, level_perct=50)
+pipelines = MultiDataCalculationPipelines()
+histDataProcessor.set_calculation_pipelines(
+  CalculationPipeline(
+    workers = [fbr50_worker]
+  )
+)
+
+# Run the pipeline and get data
+histDataProcessor.run_calculation_pipelines()
+```
+
+##### Display the results. 
+Since our time window was 15 days. So, the calculation result for first 14 days will not be available. We will look at the last 10 records with `tail(10)`
+```python
+result.get_daily_data()[[
+  BaseColumns.Identifier, BaseColumns.Date, BaseColumns.Close, fbr50_worker._column_name
+]].tail(10)
+```
+
+*Output*
+|      | Identifier                        | Date                |    Close |    Fbr50 |
+|-----:|:----------------------------------|:--------------------|---------:|---------:|
+| 2136 | NIFTY500 SHARIAH                  | 2023-12-29 00:00:00 |  6410.93 |  6282.76 |
+| 2137 | NIFTY CPSE                        | 2023-12-29 00:00:00 |  4860.45 |  4755.07 |
+| 2138 | NIFTY100 LIQUID 15                | 2023-12-29 00:00:00 |  5827    |  5756.95 |
+| 2139 | NIFTY100 EQUAL WEIGHT             | 2023-12-29 00:00:00 | 26879.7  | 26315.2  |
+| 2140 | NIFTY HIGH BETA 50                | 2023-12-29 00:00:00 |  3401.85 |  3315.58 |
+| 2141 | NIFTY ALPHA 50                    | 2023-12-29 00:00:00 | 42306.3  | 41655.7  |
+| 2142 | NIFTY GROWTH SECTORS 15           | 2023-12-29 00:00:00 | 10787.7  | 10646.7  |
+| 2143 | NIFTY MIDSMALLCAP 400             | 2023-12-29 00:00:00 | 16015.5  | 15663    |
+| 2144 | NIFTY 50                          | 2023-12-29 00:00:00 | 21731.4  | 21464.4  |
+| 2145 | NIFTY 15 YR AND ABOVE G-SEC INDEX | 2023-12-29 00:00:00 |  3004.56 |  3004.09 |

@@ -11,8 +11,8 @@ class CalculationWorker:
 class CalculationPipeline:
   _pipeline: None
   
-  def __init__(self):
-    self._pipeline = []
+  def __init__(self, workers = None):
+    self._pipeline = workers
 
   def add_calculation_worker(self, worker: CalculationWorker):
     self._pipeline.append(worker)

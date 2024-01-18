@@ -192,9 +192,10 @@ class HistoricalDataset():
     return self
 
 class HistoricalDataProcessOptions:
-  include_monthly_data: bool = True
-  include_annual_data: bool = True
-
+  def __init__(self, include_monthly_data: bool = True, include_annual_data: bool = True):
+    self.include_monthly_data = include_monthly_data
+    self.include_annual_data = include_annual_data
+  
 class HistoricalDataProcessor(DataProcessor):
   options: HistoricalDataProcessOptions
 
