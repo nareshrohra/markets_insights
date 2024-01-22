@@ -39,7 +39,7 @@ class DataReader:
   def get_data(self, for_date):
     return self.download_data(for_date)
 
-  def read(self, for_date):
+  def read(self, for_date) -> pd.DataFrame:
     date_parts = self.get_date_parts(for_date)
     filenames = self.get_filenames(for_date)
     output_file_path = self.options.output_path_template.substitute( **({**EnvironmentSettings.Paths, **filenames}) )

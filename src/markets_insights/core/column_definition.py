@@ -1,13 +1,23 @@
-class BaseColumns:
-  Identifier = 'Identifier'
-  PreviousClose = 'PreviousClose'
+from string import Template
+
+class AggregationPeriods:
+  Monthly = "Monthly"
+  Annual = "Annual"
+
+class BasePriceColumns:
   Open = 'Open'
   High = 'High'
   Low = 'Low'
   Close = 'Close'
+
+class BaseColumns(BasePriceColumns):
+  Identifier = 'Identifier'
+  PreviousClose = 'PreviousClose'
   Date = 'Date'
   Turnover: str = 'Turnover (Rs. Cr.)'
   Volume: str = 'TOTTRDQTY'
+
+PeriodAggregateColumnTemplate: Template = Template("$period $col_name")
 
 class CalculatedColumnsBase:
   Month = 'Month'
@@ -18,6 +28,7 @@ class CalculatedColumnsBase:
   PriceCrossedAboveVwap = 'PriceCrossedAboveVwap'
 
 class CalculatedColumns (CalculatedColumnsBase):
+  Change = 'Change'
   IsInDerivatives = 'IsInDerivatives'
   ClosePriceDiff = 'ClosePriceDiff'
   Gain = 'Gain'

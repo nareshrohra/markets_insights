@@ -37,6 +37,40 @@ to_date = datetime.date.today() + datetime.timedelta(days=-1)
 result = daterange_reader.read(from_date = from_date, to_date = to_date)
 ```
 
+### Get daily, monthly and annually aggregrated data
+In this example we will use HistoricalDataProcessor class to get data between a date range. HistoricalDataProcessor will also do monthly and annual aggregation of data.
+
+```python
+# import classes & setup
+from markets_insights.dataprocess.data_processor import HistoricalDataProcessor
+from markets_insights.datareader.data_reader import NseIndicesReader
+histDataProcessor = HistoricalDataProcessor()
+
+# Fetch and process the data
+year_start = datetime.date(2023, 1, 1)
+year_end = datetime.date(2023, 12, 31)
+result = histDataProcessor.process(NseIndicesReader(), {'from_date': year_start, 'to_date': year_end})
+```
+
+#### Displaying the output
+We will call `get_monthly_data()` method to get monthly aggregated data. We can call `get_daily_data()` for *Daily* and `get_annual_data()` for *Annual* data.
+
+```python
+from markets_insights.core.column_definition import BaseColumns
+
+result.get_monthly_data().sort_values(BaseColumns.Date).head(5)
+```
+
+*Output*
+|      | Identifier                                  | Date                | Month   | Turnover (Rs. Cr.)   |    Close | High     | Low     | Open    |
+|-----:|:--------------------------------------------|:--------------------|:--------|:---------------------|---------:|:---------|:--------|:--------|
+|    0 | INDIA VIX                                   | 2023-01-31 00:00:00 | 2023-01 | -                    |    16.88 | 19.39    | 11.6425 | 14.8675 |
+| 1012 | NIFTY100 ENHANCED ESG                       | 2023-01-31 00:00:00 | 2023-01 | 36558.38             |  3352.6  | -        | -       | -       |
+|  228 | NIFTY ALPHA QUALITY VALUE LOW-VOLATILITY 30 | 2023-01-31 00:00:00 | 2023-01 | 10785.87             | 11286.1  | -        | -       | -       |
+| 1000 | NIFTY100 ALPHA 30                           | 2023-01-31 00:00:00 | 2023-01 | 22098.49             | 11160.8  | -        | -       | -       |
+|  240 | NIFTY AUTO                                  | 2023-01-31 00:00:00 | 2023-01 | 3716.97              | 13323.9  | 13355.95 | 12467.8 | 12636.6 |
+
+
 ### Calculation pipeline for RSI
 Below example demonstrates calculating RSI using the calculation pipeline. The datepart calculation is pre-requisite for RSI calculation.
 

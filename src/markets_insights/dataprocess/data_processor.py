@@ -3,8 +3,8 @@ import os
 from string import Template
 import pandas as pd
 from markets_insights.datareader.data_reader import DataReader, DateRangeDataReader
-from markets_insights.core.column_definition import BaseColumns, CalculatedColumns
-from markets_insights.core.core import MarketDaysHelper, Instrumentation
+from markets_insights.core.column_definition import BaseColumns, BasePriceColumns, CalculatedColumns, PeriodAggregateColumnTemplate, AggregationPeriods
+from markets_insights.core.core import MarketDaysHelper, Instrumentation, MiDataFrame, TypeHelper
 from markets_insights.core.column_definition import BaseColumns
 from markets_insights.calculations.equity import LowestPriceInNextNDaysCalculationWorker, HighestPriceInNextNDaysCalculationWorker
 from markets_insights.calculations.base import CalculationWorker, CalculationPipeline, \
@@ -25,7 +25,7 @@ class DataProcessor:
   def process(self, reader: DataReader):
     return Exception("Not implemented!")
   
-  def remove_unnamed_columns(self, data: pd.DataFrame):
+  def remove_unnamed_columns(self, data: pd.DataFrame) -> pd.DataFrame:
     return data.loc[:, ~data.columns.str.match("Unnamed")]
 
 class ManualDataProcessor(DataProcessor):
@@ -50,7 +50,7 @@ class ManualDataProcessor(DataProcessor):
 
     final_df = pd.concat(dfs)
 
-    final_df['Date'] = pd.to_datetime(final_df['Date'])
+    final_df[BaseColumns.Date] = pd.to_datetime(final_df[BaseColumns.Date])
 
     output_file = os.path.join(self.manual_data_dir_template.substitute(**EnvironmentSettings.Paths), 
                                 self.filename_template.substitute(**{'ReaderName': reader.name}))
@@ -142,48 +142,48 @@ class MultiDataCalculationPipelines:
     return data
 
 class HistoricalDataset():
-  _daily : pd.DataFrame
-  _identifier_grouped : pd.DataFrame
-  _monthly : pd.DataFrame
-  _annual : pd.DataFrame
+  _daily : pd.DataFrame = None
+  _identifier_grouped : pd.core.groupby.DataFrameGroupBy = None
+  _monthly : pd.DataFrame = None
+  _annual : pd.DataFrame = None
   
+  def sanitize_data(self):
+    self._daily[BaseColumns.High] = pd.to_numeric(self._daily[BaseColumns.High].replace("-", None))
+    self._daily[BaseColumns.Low] = pd.to_numeric(self._daily[BaseColumns.Low].replace("-", None))
+
+    self._daily[BaseColumns.High].fillna(self._daily[BaseColumns.Close], inplace=True)
+    self._daily[BaseColumns.Low].fillna(self._daily[BaseColumns.Close], inplace=True)
+    return self
+
   def create_identifier_grouped(self):
     self._identifier_grouped = self.create_grouped_data(BaseColumns.Identifier)
     return self
   
   def set_daily_data(self, daily):
-    self._daily = daily
+    self._daily = MiDataFrame(daily)
     return self
   
   def set_monthly_data(self, monthly):
-    self._monthly = monthly
+    self._monthly = MiDataFrame(monthly)
     return self
 
   def set_annual_data(self, annual):
-    self._annual = annual
+    self._annual = MiDataFrame(annual)
     return self
   
-  def sanitize_data(self):
-    self._daily['High'] = pd.to_numeric(self._daily['High'].replace("-", None))
-    self._daily['Low'] = pd.to_numeric(self._daily['Low'].replace("-", None))
-
-    self._daily['High'].fillna(self._daily['Close'], inplace=True)
-    self._daily['Low'].fillna(self._daily['Close'], inplace=True)
-    return self
-
   def create_grouped_data(self, columns):
     return self._daily.groupby(columns)
   
   def get_identifier_grouped(self):
     return self._identifier_grouped
   
-  def get_daily_data(self):
+  def get_daily_data(self) -> MiDataFrame:
     return self._daily
   
-  def get_monthly_data(self):
+  def get_monthly_data(self) -> MiDataFrame:
     return self._monthly
   
-  def get_annual_data(self):
+  def get_annual_data(self) -> MiDataFrame:
     return self._annual
 
   def process(self):
@@ -217,7 +217,7 @@ class HistoricalDataProcessor(DataProcessor):
       self.dataset.set_daily_data(daily_data)
 
   @Instrumentation.trace(name="process")
-  def process(self, reader: DataReader, options: dict):
+  def process(self, reader: DataReader, options: dict) -> HistoricalDataset:
     from_date = MarketDaysHelper.get_this_or_next_market_day(options['from_date'])
     to_date = MarketDaysHelper.get_this_or_previous_market_day(options['to_date'])
 
@@ -227,7 +227,7 @@ class HistoricalDataProcessor(DataProcessor):
     #self.rename_columns(reader, historical_data)
     
     if manual_data is not None:
-      historical_data = pd.concat([historical_data, manual_data], ignore_index=True).reset_index(drop=True).sort_values('Date')
+      historical_data = pd.concat([historical_data, manual_data], ignore_index=True).reset_index(drop=True).sort_values(BaseColumns.Date)
 
     historical_data[BaseColumns.Identifier] = historical_data[BaseColumns.Identifier].str.upper()
 
@@ -235,67 +235,54 @@ class HistoricalDataProcessor(DataProcessor):
     daily_data = self.remove_unnamed_columns(pd.DataFrame(historical_data).reset_index(drop=True))
     self.dataset.set_daily_data(daily_data)
     self.dataset.create_identifier_grouped()
-    self.add_basic_calc(daily_data)
-
+    
     output_path = self.output_dir_template.substitute(**EnvironmentSettings.Paths)
     
     if self.options.include_monthly_data == True:
       self.dataset.set_monthly_data(self.add_monthly_growth_calc(daily_data))
       monthly_data_filename = self.monthly_group_data_filename.substitute({**EnvironmentSettings.Paths, 'ReaderName': reader.name})
-      self.dataset.get_monthly_data().last().reset_index().to_csv(output_path + monthly_data_filename)
+      self.dataset.get_monthly_data().to_csv(output_path + monthly_data_filename)
     
     if self.options.include_annual_data == True:
       self.dataset.set_annual_data(self.add_yearly_growth_calc(daily_data))
       annual_data_filename = self.annual_group_data_filename.substitute({**EnvironmentSettings.Paths, 'ReaderName': reader.name})
-      self.dataset.get_annual_data().last().reset_index().to_csv(output_path + annual_data_filename)
+      self.dataset.get_annual_data().to_csv(output_path + annual_data_filename)
     
     return self.dataset
   
-  @Instrumentation.trace(name="add_basic_calc")
-  def add_basic_calc(self, processed_data):
-    Instrumentation.debug('Started basic calculation')
-
-    processed_data['Growth'] = self.dataset.get_identifier_grouped()['Close'].transform(lambda x:
-        (x - x.iloc[0]) / x.iloc[0] * 100      
-      )
-    
-    return processed_data
-
-  def add_periodic_growth_calc(self, processed_data, period, label):
+  def add_periodic_growth_calc(self, processed_data: pd.DataFrame, period: str) -> pd.DataFrame:
     Instrumentation.debug(f"Started periodic calculation for {period}")
 
-    periodic_grouped = processed_data.groupby(['Identifier', period])
+    periodic_grouped = processed_data.groupby([BaseColumns.Identifier, period])
 
-    processed_data[period + ' Open'] = periodic_grouped['Open'].transform(lambda x: x.iloc[0])
-    processed_data[period + ' Close'] = periodic_grouped['Close'].transform(lambda x: x.iloc[-1])
-    processed_data[period + ' Low'] = periodic_grouped['Low'].transform('min')
-    processed_data[period + ' High'] = periodic_grouped['High'].transform('max')
-    processed_data[label + ' - Growth'] = periodic_grouped['Close'].transform(lambda x: 
-                                          #pd.Series((x.iloc[-1] - x.iloc[0]) / x.iloc[0] * 100 if x.iloc[0] > 0 else 0, dtype='float64')
-                                          (x.iloc[-1] - x.iloc[0]) / x.iloc[0] * 100
-                                        )
-    processed_data[label + ' - Highest Fall From Start'] = periodic_grouped['Low'].transform(lambda x: 
-                                          #pd.Series((x.min() - x.iloc[0]) / x.iloc[0] * 100 if x.iloc[0] > 0 else 0, dtype='float64')
-                                          (x.min() - x.iloc[0]) / x.iloc[0] * 100
-                                        )
-    processed_data[label + ' - Highest Fall From Historic High'] = periodic_grouped['Low From Historic High'].transform('min')
-    processed_data[label + ' - Highest Rise From Start'] = periodic_grouped['High'].transform(lambda x: 
-                                          #pd.Series((x.max() - x.iloc[0]) / x.iloc[0] * 100 if x.iloc[0] > 0 else 0, dtype='float64')
-                                          (x.max() - x.iloc[0]) / x.iloc[0] * 100
-                                        )
-    processed_data[label + ' - Turnover'] = periodic_grouped['Turnover (Rs. Cr.)'].transform('sum')
+    processed_data[PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": BaseColumns.Open})] = periodic_grouped[BaseColumns.Open].transform(lambda x: x.iloc[0])
+    processed_data[PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": BaseColumns.Close})] = periodic_grouped[BaseColumns.Close].transform(lambda x: x.iloc[-1])
+    processed_data[PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": BaseColumns.Low})] = periodic_grouped[BaseColumns.Low].transform('min')
+    processed_data[PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": BaseColumns.High})] = periodic_grouped[BaseColumns.High].transform('max')
+    
+    processed_data[PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": BaseColumns.Turnover})] = periodic_grouped[BaseColumns.Turnover].transform('sum')
 
-    return periodic_grouped
+    periodic_data = periodic_grouped.last().reset_index()
+    
+    periodic_data = periodic_data[[BaseColumns.Identifier, BaseColumns.Date, period, BaseColumns.Turnover] + \
+      [PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": col_name}) for col_name in TypeHelper.get_class_static_values(BasePriceColumns)]]
+    
+    cols = {}
+    for col_name in TypeHelper.get_class_static_values(BasePriceColumns):
+      cols[PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": col_name})] = col_name
+    periodic_data.rename(columns=cols, inplace=True)
+
+    return periodic_data
 
   @Instrumentation.trace(name="add_yearly_growth_calc")
   def add_yearly_growth_calc(self, processed_data):
-    processed_data['Year'] = processed_data['Date'].dt.year
-    return self.add_periodic_growth_calc(processed_data, 'Year', 'Annual')
+    processed_data[CalculatedColumns.Year] = processed_data[BaseColumns.Date].dt.year
+    return self.add_periodic_growth_calc(processed_data, CalculatedColumns.Year)
   
   @Instrumentation.trace(name="add_monthly_growth_calc")
   def add_monthly_growth_calc(self, processed_data):
-    processed_data['Month'] = processed_data['Date'].dt.strftime("%Y-%m")
-    return self.add_periodic_growth_calc(processed_data, 'Month', 'Monthly')
+    processed_data[CalculatedColumns.Month] = processed_data[BaseColumns.Date].dt.strftime("%Y-%m")
+    return self.add_periodic_growth_calc(processed_data, CalculatedColumns.Month)
 
   def rename_columns(self, reader: DataReader, historical_data: pd.DataFrame):
     column_name_mappings = reader.get_column_name_mappings()
@@ -309,8 +296,8 @@ class HistoricalDataProcessor(DataProcessor):
 
     if os.path.exists(manual_data_file):
       manual_data = pd.read_csv(manual_data_file)
-      manual_data['Date'] = pd.to_datetime(manual_data['Date'])
-      return manual_data[manual_data['Date'].dt.date.between(from_date, to_date)]
+      manual_data[BaseColumns.Date] = pd.to_datetime(manual_data[BaseColumns.Date])
+      return manual_data[manual_data[BaseColumns.Date].dt.date.between(from_date, to_date)]
     else:
       return None
 
@@ -333,8 +320,8 @@ class HistoricalDataProcessor(DataProcessor):
 
     if os.path.exists(output_file):
       historical_data = pd.read_csv(output_file)
-      earliest = pd.Timestamp(historical_data['Date'].min()).date()
-      latest = pd.Timestamp(historical_data['Date'].max()).date()
+      earliest = pd.Timestamp(historical_data[BaseColumns.Date].min()).date()
+      latest = pd.Timestamp(historical_data[BaseColumns.Date].max()).date()
       if earliest > from_date:
         Instrumentation.info(f"Reading data from {from_date} to {earliest}")
         read_data = dateRangeReader.read(from_date, earliest)
@@ -351,11 +338,11 @@ class HistoricalDataProcessor(DataProcessor):
       historical_data = dateRangeReader.read(from_date, to_date)
       save_to_file = True
       
-    historical_data['Date'] = pd.to_datetime(historical_data['Date'])
+    historical_data[BaseColumns.Date] = pd.to_datetime(historical_data[BaseColumns.Date])
     
     if save_to_file == True:
       Instrumentation.debug(f"Saving data to file: {output_file}")
-      historical_data = self.remove_unnamed_columns(historical_data.sort_values('Date'))
+      historical_data = self.remove_unnamed_columns(historical_data.sort_values(BaseColumns.Date))
       historical_data.to_csv(output_file, index=False)
     
-    return historical_data[historical_data['Date'].dt.date.between(from_date, to_date)]
+    return historical_data[historical_data[BaseColumns.Date].dt.date.between(from_date, to_date)]

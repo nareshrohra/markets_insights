@@ -1,3 +1,4 @@
+from markets_insights.core.column_definition import BaseColumns, CalculatedColumns, CalculatedColumnsBase
 from markets_insights.core.settings import MarketDaysSettings
 from markets_insights.core.environment import EnvironmentSettings
 from datetime import date
@@ -138,3 +139,108 @@ class MarketDaysHelper:
         day.weekday() == calendar.THURSDAY and \
         day.month == month][thursday_number]
     return last_thursday
+
+class FilterCriteria:
+  _col_to_filter: str = None
+  _condition: str = None
+  _condition_value = None
+  
+  def __init__(self, col_to_filter: str = None, condition: str = None, condition_value = None, ):
+    self._col_to_filter = col_to_filter
+    self._condition = condition
+    self._condition_value = condition_value
+
+  def __str__(self) -> str:
+      return self.get_query()
+
+  def get_query(self) -> str:
+      return f"`{self._col_to_filter}` {self._condition} {self._condition_value}"
+
+class FilterBase:
+  _filter_criterias: [FilterCriteria]
+
+  def __init__(self):
+    self._filter_criterias = []
+    
+  def add_criteria(self, criteria: FilterCriteria):
+    self._filter_criterias.append(criteria)
+
+  def __str__(self) -> str:
+      return f"{self.get_query()}"
+
+  def get_query(self) -> str:
+      return " & ".join(
+            [
+                f"{k.get_query()}"
+                for k in self._filter_criterias
+            ]
+        )
+
+  def __and__(self, other: object):
+    new_filter = FilterBase()
+    for criteria in self._filter_criterias:
+      new_filter.add_criteria(criteria)
+    for criteria in other._filter_criterias:
+      new_filter.add_criteria(criteria)
+    return new_filter
+
+class IdentifierFilter(FilterBase):
+  def __init__(self, identifier: str):
+    super().__init__()
+    self.add_criteria(FilterCriteria(
+        col_to_filter=BaseColumns.Identifier,
+        condition = "==",
+        condition_value = f"'{identifier}'"
+      )
+    )
+
+class DateFilter(FilterBase):
+  def __init__(self, for_date: date = None):
+    super().__init__()
+    self.add_criteria(FilterCriteria(
+        col_to_filter=BaseColumns.Date,
+        condition = "==",
+        condition_value = f"'{for_date}'"
+      )
+    )
+  
+class DateRangeFilter(FilterBase):
+  def __init__(self, from_date: date = None, to_date: date = None):
+    super().__init__()
+    if from_date is not None:
+      self.add_criteria(FilterCriteria(
+          col_to_filter=BaseColumns.Date,
+          condition = ">=",
+          condition_value = f"'{from_date}'"
+        )
+      )
+
+    if to_date is not None:
+      self.add_criteria(FilterCriteria(
+          col_to_filter=BaseColumns.Date,
+          condition = "<=",
+          condition_value = f"'{to_date}'"
+        )
+      )
+
+class DatePartsFilter(FilterBase):
+  def __init__(self, month_no: int = None, year: int = None):
+    super().__init__()
+    if month_no is not None:
+      self.add_criteria(FilterCriteria(
+          col_to_filter=CalculatedColumns.MonthNo,
+          condition = "==",
+          condition_value = month_no
+        )
+      )
+    if year is not None:
+      self.add_criteria(FilterCriteria(
+          col_to_filter=CalculatedColumns.Year,
+          condition = "==",
+          condition_value = year
+        )
+      )
+
+class MiDataFrame(pd.DataFrame):
+  def filter_by(self, filter: FilterBase):
+    return MiDataFrame(self.query(filter.get_query()))
