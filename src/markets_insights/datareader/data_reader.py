@@ -100,10 +100,10 @@ class DataReader:
 class BhavCopyReader(DataReader):
   def __init__(self):
     super().__init__()
-    self.name = "Equities"
+    self.name = "nse_equities"
     __base_url = "https://archives.nseindia.com/content/historical/EQUITIES/"
     self.options.url_template = Template(__base_url + "$year/$month/$download_filename")
-    self.options.output_path_template = Template("$DataBaseDir/$RawDataDir/$BhavDataDir/$download_filename")
+    self.options.output_path_template = Template(f"$DataBaseDir/$RawDataDir/$BhavDataDir/$download_filename")
     self.options.unzip_path_template = Template("$DataBaseDir/$RawDataDir/$BhavDataDir/$download_filename_wo_ext")
     self.options.primary_data_path_template = Template("$DataBaseDir/$RawDataDir/$BhavDataDir/$download_filename_wo_ext/$primary_data_filename")
 
