@@ -7,30 +7,6 @@ from dateutil.relativedelta import relativedelta
 from markets_insights.datareader.data_reader import NseDerivatiesOldReader
 from markets_insights.core.core import MarketDaysHelper
 
-class LowestPriceInNextNDaysCalculationWorker (CalculationWorker):
-  def __init__(self, time_window):
-    self._time_window = time_window
-    self._val_column_name = f'LowestPriceInNext{str(self._time_window)}Days'
-    self._perc_column_name = f'HighestPercFallInNext{str(self._time_window)}Days'
-
-  @Instrumentation.trace(name="LowestPriceInNextNDaysCalculationWorker")
-  def add_calculated_columns(self, data):
-    identifier_grouped_data = data.groupby(BaseColumns.Identifier)
-    data[self._val_column_name] = identifier_grouped_data[BaseColumns.Low].transform(lambda x: x.rolling(self._time_window).min().shift(-self._time_window))
-    data[self._perc_column_name] = (data[BaseColumns.Close] - data[self._val_column_name]) / data[BaseColumns.Close] * 100
-
-class HighestPriceInNextNDaysCalculationWorker (CalculationWorker):
-  def __init__(self, time_window):
-    self._time_window = time_window
-    self._val_column_name = f'HighestPriceInNext{str(self._time_window)}Days'
-    self._perc_column_name = f'HighestPercRiseInNext{str(self._time_window)}Days'
-
-  @Instrumentation.trace(name="HighestPriceInNextNDaysCalculationWorker")
-  def add_calculated_columns(self, data):
-    identifier_grouped_data = data.groupby(BaseColumns.Identifier)
-    data[self._val_column_name] = identifier_grouped_data[BaseColumns.High].transform(lambda x: x.rolling(self._time_window).max().shift(-self._time_window))
-    data[self._perc_column_name] = (data[self._val_column_name] - data[BaseColumns.Close]) / data[BaseColumns.Close] * 100
-
 class IsInDerivativesFlagCalculationWorker (CalculationWorker):
   @Instrumentation.trace(name="IsInDerivativesFlagCalculationWorker")
   def add_calculated_columns(self, data):

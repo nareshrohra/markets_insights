@@ -9,10 +9,13 @@ class CalculationWorker:
     raise NotImplementedError("add_calculated_fields")
 
 class CalculationPipeline:
-  _pipeline: None
+  _pipeline: list
   
   def __init__(self, workers = None):
-    self._pipeline = workers
+    if workers is not None:
+      self._pipeline = workers
+    else:
+      self._pipeline = []
 
   def add_calculation_worker(self, worker: CalculationWorker):
     self._pipeline.append(worker)
@@ -34,7 +37,7 @@ class ValueCrossedAboveFlagWorker (CalculationWorker):
   def add_calculated_columns(self, data):
     identifier_grouped_data = data.groupby(BaseColumns.Identifier)
     data[self._column_name] = identifier_grouped_data[self._value_column].transform(lambda x: 
-      (x.shift(-1) < self._value) & (x >= self._value)
+      (x.shift(1) < self._value) & (x >= self._value)
     )
 
 class ValueCrossedBelowFlagWorker (CalculationWorker):
@@ -89,7 +92,7 @@ class SmaCalculationWorker (CalculationWorker):
       )
     
 class StdDevCalculationWorker (CalculationWorker):
-  def __init__(self, time_window):
+  def __init__(self, time_window: int = 200):
     self._time_window = time_window
     self._column_name = 'StdDev' + str(self._time_window)
 
@@ -101,7 +104,7 @@ class StdDevCalculationWorker (CalculationWorker):
       )
     
 class BollingerBandCalculationWorker (CalculationWorker):
-  def __init__(self, time_window, deviation):
+  def __init__(self, time_window: int = 200, deviation: int = 2):
     self._time_window = time_window
     self._deviation = deviation
     self._column_name_upper_band = 'Bb' + str(self._time_window) + 'Dev' + str(deviation) + 'Upper'
@@ -165,7 +168,7 @@ class RsiCalculationWorker(CalculationWorker):
     return result.reset_index(drop=True)
   
 class StochRsiCalculationWorker(CalculationWorker):
-  def __init__(self, time_window):
+  def __init__(self, time_window: int = 14):
     self._time_window = time_window
 
   def calculate_stoch_rsi(self, group: pd.DataFrame):
@@ -186,6 +189,33 @@ class VwapCalculationWorker (CalculationWorker):
 
   @Instrumentation.trace(name="VwapCalculationWorker")
   def add_calculated_columns(self, data):
+    data[BaseColumns.Turnover] = data[BaseColumns.Turnover].replace('-', 0)
+    data[BaseColumns.Volume] = data[BaseColumns.Volume].replace('-', 0)
     data[CalculatedColumns.Vwap] = data.groupby(BaseColumns.Identifier).apply(lambda x: 
-      x[BaseColumns.Turnover].rolling(self._time_window).sum() / x.rolling(14)[BaseColumns.Volume].sum()
+      x[BaseColumns.Turnover].rolling(self._time_window).sum() / x.rolling(self._time_window)[BaseColumns.Volume].sum()
     ).reset_index(level=0, drop=True)
+
+class LowestPriceInNextNDaysCalculationWorker (CalculationWorker):
+  def __init__(self, time_window):
+    self._time_window = time_window
+    self._val_column_name = f'LowestPriceInNext{str(self._time_window)}Days'
+    self._perc_column_name = f'HighestPercFallInNext{str(self._time_window)}Days'
+
+  @Instrumentation.trace(name="LowestPriceInNextNDaysCalculationWorker")
+  def add_calculated_columns(self, data):
+    identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+    data[self._val_column_name] = identifier_grouped_data[BaseColumns.Low].transform(lambda x: x.rolling(self._time_window).min().shift(-self._time_window))
+    data[self._perc_column_name] = (data[BaseColumns.Close] - data[self._val_column_name]) / data[BaseColumns.Close] * 100
+
+
+class HighestPriceInNextNDaysCalculationWorker (CalculationWorker):
+  def __init__(self, time_window):
+    self._time_window = time_window
+    self._val_column_name = f'HighestPriceInNext{str(self._time_window)}Days'
+    self._perc_column_name = f'HighestPercRiseInNext{str(self._time_window)}Days'
+
+  @Instrumentation.trace(name="HighestPriceInNextNDaysCalculationWorker")
+  def add_calculated_columns(self, data):
+    identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+    data[self._val_column_name] = identifier_grouped_data[BaseColumns.High].transform(lambda x: x.rolling(self._time_window).max().shift(-self._time_window))
+    data[self._perc_column_name] = (data[self._val_column_name] - data[BaseColumns.Close]) / data[BaseColumns.Close] * 100

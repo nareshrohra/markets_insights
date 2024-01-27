@@ -240,7 +240,3 @@ class DatePartsFilter(FilterBase):
           condition_value = year
         )
       )
-
-class MiDataFrame(pd.DataFrame):
-  def filter_by(self, filter: FilterBase):
-    return MiDataFrame(self.query(filter.get_query()))

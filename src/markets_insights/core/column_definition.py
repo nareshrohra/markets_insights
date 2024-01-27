@@ -14,8 +14,8 @@ class BaseColumns(BasePriceColumns):
   Identifier = 'Identifier'
   PreviousClose = 'PreviousClose'
   Date = 'Date'
-  Turnover: str = 'Turnover (Rs. Cr.)'
-  Volume: str = 'TOTTRDQTY'
+  Turnover: str = 'Turnover'
+  Volume: str = 'Volume'
 
 PeriodAggregateColumnTemplate: Template = Template("$period $col_name")
 
@@ -66,3 +66,4 @@ class DerivativesBaseColumns(BaseColumns):
   ExpiryDate: str = 'ExpiryDate'
   StrikePrice: str = 'StrkPric'
   OpenInterest: str = 'OpenInterest'
+  OiChangePct: float = 'OiChangePerc'

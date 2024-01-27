@@ -4,9 +4,9 @@ from string import Template
 import pandas as pd
 from markets_insights.datareader.data_reader import DataReader, DateRangeDataReader
 from markets_insights.core.column_definition import BaseColumns, BasePriceColumns, CalculatedColumns, PeriodAggregateColumnTemplate, AggregationPeriods
-from markets_insights.core.core import MarketDaysHelper, Instrumentation, MiDataFrame, TypeHelper
+from markets_insights.core.core import MarketDaysHelper, Instrumentation, TypeHelper
 from markets_insights.core.column_definition import BaseColumns
-from markets_insights.calculations.equity import LowestPriceInNextNDaysCalculationWorker, HighestPriceInNextNDaysCalculationWorker
+from markets_insights.calculations.base import HighestPriceInNextNDaysCalculationWorker, LowestPriceInNextNDaysCalculationWorker
 from markets_insights.calculations.base import CalculationWorker, CalculationPipeline, \
   SmaCalculationWorker, RsiCalculationWorker, BollingerBandCalculationWorker, StochRsiCalculationWorker, \
   ValueCrossedAboveFlagWorker, ValueCrossedBelowFlagWorker, PriceCrossedAboveValueFlagWorker, PriceCrossedBelowValueFlagWorker, \
@@ -159,16 +159,16 @@ class HistoricalDataset():
     self._identifier_grouped = self.create_grouped_data(BaseColumns.Identifier)
     return self
   
-  def set_daily_data(self, daily):
-    self._daily = MiDataFrame(daily)
+  def set_daily_data(self, daily: pd.DataFrame):
+    self._daily = daily
     return self
   
-  def set_monthly_data(self, monthly):
-    self._monthly = MiDataFrame(monthly)
+  def set_monthly_data(self, monthly: pd.DataFrame):
+    self._monthly = monthly
     return self
 
-  def set_annual_data(self, annual):
-    self._annual = MiDataFrame(annual)
+  def set_annual_data(self, annual: pd.DataFrame):
+    self._annual = annual
     return self
   
   def create_grouped_data(self, columns):
@@ -177,13 +177,13 @@ class HistoricalDataset():
   def get_identifier_grouped(self):
     return self._identifier_grouped
   
-  def get_daily_data(self) -> MiDataFrame:
+  def get_daily_data(self) -> pd.DataFrame:
     return self._daily
   
-  def get_monthly_data(self) -> MiDataFrame:
+  def get_monthly_data(self) -> pd.DataFrame:
     return self._monthly
   
-  def get_annual_data(self) -> MiDataFrame:
+  def get_annual_data(self) -> pd.DataFrame:
     return self._annual
 
   def process(self):
@@ -216,7 +216,17 @@ class HistoricalDataProcessor(DataProcessor):
     if daily_data is not None:
       self.dataset.set_daily_data(daily_data)
 
-  @Instrumentation.trace(name="process")
+  @Instrumentation.trace(name="HistoricalDataProcessor.run_base_calculations")
+  def run_base_calculations(self, daily_data: pd.DataFrame):
+    if not BaseColumns.PreviousClose in daily_data.columns:
+      daily_data[BaseColumns.PreviousClose] = daily_data.groupby(BaseColumns.Identifier)[BaseColumns.Close].transform(lambda x: 
+        x.shift(-1)
+      )
+    for col_name in [BaseColumns.Open, BaseColumns.High, BaseColumns.Low]:
+      daily_data[col_name] = daily_data.apply(lambda x: x[col_name] if str(x[col_name]).replace(".", "").isnumeric() == True else x[BaseColumns.Close], axis=1)
+      daily_data[col_name] = daily_data[col_name].astype(float)
+
+  @Instrumentation.trace(name="HistoricalDataProcessor.process")
   def process(self, reader: DataReader, options: dict) -> HistoricalDataset:
     from_date = MarketDaysHelper.get_this_or_next_market_day(options['from_date'])
     to_date = MarketDaysHelper.get_this_or_previous_market_day(options['to_date'])
@@ -231,13 +241,16 @@ class HistoricalDataProcessor(DataProcessor):
 
     historical_data[BaseColumns.Identifier] = historical_data[BaseColumns.Identifier].str.upper()
 
+    self.run_base_calculations(historical_data)
+    
     self.dataset = HistoricalDataset()
     daily_data = self.remove_unnamed_columns(pd.DataFrame(historical_data).reset_index(drop=True))
+    
     self.dataset.set_daily_data(daily_data)
     self.dataset.create_identifier_grouped()
     
     output_path = self.output_dir_template.substitute(**EnvironmentSettings.Paths)
-    
+
     if self.options.include_monthly_data == True:
       self.dataset.set_monthly_data(self.add_monthly_growth_calc(daily_data))
       monthly_data_filename = self.monthly_group_data_filename.substitute({**EnvironmentSettings.Paths, 'ReaderName': reader.name})
@@ -260,26 +273,29 @@ class HistoricalDataProcessor(DataProcessor):
     processed_data[PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": BaseColumns.Low})] = periodic_grouped[BaseColumns.Low].transform('min')
     processed_data[PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": BaseColumns.High})] = periodic_grouped[BaseColumns.High].transform('max')
     
+    processed_data[PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": BaseColumns.Volume})] = periodic_grouped[BaseColumns.Volume].transform('sum')
     processed_data[PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": BaseColumns.Turnover})] = periodic_grouped[BaseColumns.Turnover].transform('sum')
-
+    
     periodic_data = periodic_grouped.last().reset_index()
     
-    periodic_data = periodic_data[[BaseColumns.Identifier, BaseColumns.Date, period, BaseColumns.Turnover] + \
-      [PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": col_name}) for col_name in TypeHelper.get_class_static_values(BasePriceColumns)]]
+    aggregated_cols = [BaseColumns.Volume, BaseColumns.Turnover] + TypeHelper.get_class_static_values(BasePriceColumns)
+
+    periodic_data = periodic_data[[BaseColumns.Identifier, BaseColumns.Date, period] + \
+      [PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": col_name}) for col_name in aggregated_cols]]
     
     cols = {}
-    for col_name in TypeHelper.get_class_static_values(BasePriceColumns):
+    for col_name in aggregated_cols:
       cols[PeriodAggregateColumnTemplate.substitute({"period": period, "col_name": col_name})] = col_name
     periodic_data.rename(columns=cols, inplace=True)
 
     return periodic_data
 
-  @Instrumentation.trace(name="add_yearly_growth_calc")
+  @Instrumentation.trace(name="HistoricalDataProcessor.add_yearly_growth_calc")
   def add_yearly_growth_calc(self, processed_data):
     processed_data[CalculatedColumns.Year] = processed_data[BaseColumns.Date].dt.year
     return self.add_periodic_growth_calc(processed_data, CalculatedColumns.Year)
   
-  @Instrumentation.trace(name="add_monthly_growth_calc")
+  @Instrumentation.trace(name="HistoricalDataProcessor.add_monthly_growth_calc")
   def add_monthly_growth_calc(self, processed_data):
     processed_data[CalculatedColumns.Month] = processed_data[BaseColumns.Date].dt.strftime("%Y-%m")
     return self.add_periodic_growth_calc(processed_data, CalculatedColumns.Month)
@@ -289,7 +305,7 @@ class HistoricalDataProcessor(DataProcessor):
     if column_name_mappings is not None:
       historical_data.rename(columns = column_name_mappings, inplace = True)
 
-  @Instrumentation.trace(name="get_manual_data")
+  @Instrumentation.trace(name="HistoricalDataProcessor.get_manual_data")
   def get_manual_data(self, reader: DataReader, options: dict, from_date: date, to_date: date):
     manual_data_file = os.path.join(self.manual_data_dir_template.substitute(**EnvironmentSettings.Paths), 
                                 self.filename_template.substitute(**{'ReaderName': reader.name}))
@@ -301,7 +317,7 @@ class HistoricalDataProcessor(DataProcessor):
     else:
       return None
 
-  @Instrumentation.trace(name="get_data")
+  @Instrumentation.trace(name="HistoricalDataProcessor.get_data")
   def get_data(self, reader: DataReader, options: dict, from_date: date, to_date: date):
     Instrumentation.debug("Started to read data")
     output_file = os.path.join(self.output_dir_template.substitute(**EnvironmentSettings.Paths), 

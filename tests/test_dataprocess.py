@@ -5,10 +5,8 @@ from helper import (
   check_col_values,
   setup, 
   check_base_cols_present,
-  PresetDates,
   Presets
 )
-from markets_insights.core.core import DateFilter, DatePartsFilter, IdentifierFilter
 
 setup()
 
@@ -21,15 +19,11 @@ from markets_insights.dataprocess.data_processor import (
   HistoricalDataset
 )
 
-filter_nifty50 = IdentifierFilter("NIFTY 50")
-filter_date_year_end = DateFilter(PresetDates.year_end)
-filter_year = DatePartsFilter(year=2023)
-
 def test_historical_data_processor_without_options():
   processor = HistoricalDataProcessor()
   result: HistoricalDataset = processor.process(NseIndicesReader(), {
-    'from_date': PresetDates.dec_start,
-    'to_date': PresetDates.dec_end
+    'from_date': Presets.dates.dec_start,
+    'to_date': Presets.dates.dec_end
   })
   check_base_cols_present(result.get_daily_data(), "Daily")
   assert result.get_daily_data().shape[0] == 2146
@@ -49,8 +43,8 @@ def test_historical_data_processor_without_options():
 def test_historical_data_processor_with_options(options: HistoricalDataProcessOptions):
   processor = HistoricalDataProcessor(options)
   result = processor.process(NseIndicesReader(), {
-    'from_date': PresetDates.dec_start,
-    'to_date': PresetDates.dec_end
+    'from_date': Presets.dates.dec_start,
+    'to_date': Presets.dates.dec_end
   })
   check_base_cols_present(result.get_daily_data(), "Daily")
 
@@ -67,35 +61,35 @@ def test_historical_data_processor_with_options(options: HistoricalDataProcessOp
 def test_historical_data_processor_monthly_aggregration():
   processor = HistoricalDataProcessor()
   result = processor.process(NseIndicesReader(), {
-    'from_date': PresetDates.dec_start,
-    'to_date': PresetDates.dec_end
+    'from_date': Presets.dates.dec_start,
+    'to_date': Presets.dates.dec_end
   })
 
   check_col_values(
-    data = result.get_monthly_data().query(str(filter_nifty50 & filter_date_year_end)),
+    data = result.get_monthly_data().query(str(Presets.filters.nifty50 & Presets.filters.date_year_end)),
     col_value_pairs = {
       BaseColumns.Open: 20194.1,
       BaseColumns.High: 21801.45,
       BaseColumns.Low: 20183.7,
       BaseColumns.Close: 21731.4,
-      BaseColumns.Turnover: 23697.88
+      BaseColumns.Turnover: 5752296300000.0
     }
   )
 
 def test_historical_data_processor_annual_aggregration():
   processor = HistoricalDataProcessor()
   result = processor.process(NseIndicesReader(), {
-    'from_date': PresetDates.year_start,
-    'to_date': PresetDates.year_end
+    'from_date': Presets.dates.year_start,
+    'to_date': Presets.dates.year_end
   })
 
   check_col_values(
-    data = result.get_annual_data().query(str(filter_nifty50 & filter_year)),
+    data = result.get_annual_data().query(str(Presets.filters.nifty50 & Presets.filters.date_year_end)),
     col_value_pairs = {
-      BaseColumns.Open: 	18131.7,
+      BaseColumns.Open: 18131.7,
       BaseColumns.High: 21801.45,
       BaseColumns.Low: 16828.35,
       BaseColumns.Close: 21731.4,
-      BaseColumns.Turnover: 23697.88
+      BaseColumns.Turnover: 58075646100000.0
     }
   )

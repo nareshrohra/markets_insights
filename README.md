@@ -33,9 +33,18 @@ reader = data_reader.NseIndicesReader()
 daterange_reader = data_reader.DateRangeDataReader(reader)
 
 from_date = datetime.date(2023, 1, 1)
-to_date = datetime.date.today() + datetime.timedelta(days=-1)
+to_date = datetime.date(2023, 12, 31)
 result = daterange_reader.read(from_date = from_date, to_date = to_date)
+result.head(3)
 ```
+
+*Output*
+
+|    | Identifier    | Index Date   |     Open |    High |     Low |    Close |   Points Change |   Change(%) |      Volume |    Turnover |   P/E |   P/B |   Div Yield | Date                |
+|---:|:--------------|:-------------|---------:|--------:|--------:|---------:|----------------:|------------:|------------:|------------:|------:|------:|------------:|:--------------------|
+|  0 | Nifty 50      | 02-01-2023   | 18131.7  | 18215.2 | 18086.5 | 18197.5  |           92.15 |        0.51 | 2.56074e+08 | 1.17931e+11 | 21.9  |  4.27 |        1.26 | 2023-01-02 00:00:00 |
+|  1 | Nifty Next 50 | 02-01-2023   | 42321.1  | 42409.8 | 42117.7 | 42248.4  |           60.75 |        0.14 | 1.34929e+08 | 4.11122e+10 | 25.67 |  4.79 |        1.76 | 2023-01-02 00:00:00 |
+|  2 | Nifty 100     | 02-01-2023   | 18290.2  | 18350.9 | 18237.5 | 18334.3  |           75.55 |        0.41 | 3.91003e+08 | 1.59043e+11 | 22.75 |  4.41 |        1.3  | 2023-01-02 00:00:00 |
 
 ### Get daily, monthly and annually aggregrated data
 In this example we will use HistoricalDataProcessor class to get data between a date range. HistoricalDataProcessor will also do monthly and annual aggregation of data.
@@ -58,21 +67,19 @@ We will call `get_monthly_data()` method to get monthly aggregated data. We can 
 ```python
 from markets_insights.core.column_definition import BaseColumns
 
-result.get_monthly_data().sort_values(BaseColumns.Date).head(5)
+result.get_monthly_data().sort_values(BaseColumns.Date).head(3)
 ```
 
 *Output*
-|      | Identifier                                  | Date                | Month   | Turnover (Rs. Cr.)   |    Close | High     | Low     | Open    |
-|-----:|:--------------------------------------------|:--------------------|:--------|:---------------------|---------:|:---------|:--------|:--------|
-|    0 | INDIA VIX                                   | 2023-01-31 00:00:00 | 2023-01 | -                    |    16.88 | 19.39    | 11.6425 | 14.8675 |
-| 1012 | NIFTY100 ENHANCED ESG                       | 2023-01-31 00:00:00 | 2023-01 | 36558.38             |  3352.6  | -        | -       | -       |
-|  228 | NIFTY ALPHA QUALITY VALUE LOW-VOLATILITY 30 | 2023-01-31 00:00:00 | 2023-01 | 10785.87             | 11286.1  | -        | -       | -       |
-| 1000 | NIFTY100 ALPHA 30                           | 2023-01-31 00:00:00 | 2023-01 | 22098.49             | 11160.8  | -        | -       | -       |
-|  240 | NIFTY AUTO                                  | 2023-01-31 00:00:00 | 2023-01 | 3716.97              | 13323.9  | 13355.95 | 12467.8 | 12636.6 |
+|      | Identifier                                  | Date                | Month   |      Volume |    Turnover |    Close |     High |        Low |       Open |
+|-----:|:--------------------------------------------|:--------------------|:--------|------------:|------------:|---------:|---------:|-----------:|-----------:|
+|    0 | INDIA VIX                                   | 2023-01-31 00:00:00 | 2023-01 | 0           | 0           |    16.88 |    19.39 |    11.6425 |    14.8675 |
+| 1012 | NIFTY100 ENHANCED ESG                       | 2023-01-31 00:00:00 | 2023-01 | 8.12952e+09 | 4.99243e+12 |  3352.6  |  3490.75 |  3352.6    |  3472.29   |
+|  228 | NIFTY ALPHA QUALITY VALUE LOW-VOLATILITY 30 | 2023-01-31 00:00:00 | 2023-01 | 2.32482e+09 | 1.3303e+12  | 11286.1  | 11599.4  | 11214.5    | 11456.8    |
 
 
-### Calculation pipeline for RSI
-Below example demonstrates calculating RSI using the calculation pipeline. The datepart calculation is pre-requisite for RSI calculation.
+### Calculating RSI using CalculationPipeline
+Below example demonstrates calculating RSI using the calculation pipeline.
 
 ```python
 # import classes & setup options
@@ -94,13 +101,27 @@ result = histDataProcessor.process(reader, {'from_date': year_start, 'to_date': 
 
 # Prepare calculation pipeline
 pipelines = MultiDataCalculationPipelines()
-pipelines.set_item('date_parts', CalculationPipelineBuilder.create_pipeline_for_worker(DatePartsCalculationWorker()))
 pipelines.set_item('rsi', CalculationPipelineBuilder.create_rsi_calculation_pipeline())
 histDataProcessor.set_calculation_pipelines(pipelines)
 
 # Run the pipeline
 histDataProcessor.run_calculation_pipelines()
 ```
+
+#### Displaying the output
+For displaying the relevant columns in the output we will use column name constants from *BaseColumns* & *CalculatedColumns* classes.
+```python
+from markets_insights.core.column_definition import BaseColumns, CalculatedColumns
+
+result.get_daily_data().sort_values(BaseColumns.Date).tail(3)[[BaseColumns.Identifier, BaseColumns.Date, BaseColumns.Close, CalculatedColumns.RelativeStrengthIndex]]
+```
+
+*Output*
+|        | Identifier   | Date                |   Close |     Rsi |
+|-------:|:-------------|:--------------------|--------:|--------:|
+| 336063 | RKFORGE      | 2023-12-29 00:00:00 |  725.7  | 46.9257 |
+| 329710 | RBL          | 2023-12-29 00:00:00 |  852.95 | 54.8479 |
+| 446931 | ZYDUSWELL    | 2023-12-29 00:00:00 | 1681.1  | 72.0492 |
 
 ### A real use case: Understand the affect of RSI on price
 In this use case, we understand the affect of RSI on the price of equity/stock.
@@ -112,14 +133,23 @@ We perform below steps to prepare our analysis data
 - Calculate the highest and lowest price change in the next 1, 3, 5, 7 & 10 trading sessions.
 - Find the median for highest price change and lowest price change whenever the RSI crosses the control limits.
 
+```
+# import classes
+from markets_insights.datareader.data_reader import BhavCopyReader
+
+# Fetch the data
+year_start = datetime.date(2023, 1, 1)
+to_date = datetime.date(2023, 12, 31)
+result = histDataProcessor.process(BhavCopyReader(), {'from_date': year_start, 'to_date': to_date})
+```
 
 ```python
 # prepare calculation pipeline
-periods = [1, 3, 5, 7, 10]
+periods = [1, 7, 15, 30, 45]
 
 pipelines = MultiDataCalculationPipelines()
-pipelines.set_item('date_parts', CalculationPipelineBuilder.create_pipeline_for_worker(DatePartsCalculationWorker()))
 pipelines.set_item('rsi', CalculationPipelineBuilder.create_rsi_calculation_pipeline(crossing_above_flag_value = 75, crossing_below_flag_value = 30, window = 14))
+pipelines.set_item('stoch_rsi', CalculationPipelineBuilder.create_stoch_rsi_calculation_pipeline(crossing_above_flag_value = 80, crossing_below_flag_value = 20, window = 14))
 pipelines.set_item('foward_looking_fall', CalculationPipelineBuilder.create_forward_looking_price_fall_pipeline(periods))
 pipelines.set_item('foward_looking_rise', CalculationPipelineBuilder.create_forward_looking_price_rise_pipeline(periods))
 histDataProcessor.set_calculation_pipelines(pipelines=pipelines)
@@ -130,11 +160,11 @@ histDataProcessor.run_calculation_pipelines()
 daily_data = result.get_daily_data()
 
 # Import constants so its easier to refer to column names
-from markets_insights.core.column_definition import CalculatedColumns
+from markets_insights.core.column_definition import BaseColumns, CalculatedColumns
 
 # get names of fwd looking price column names. Since, these column names are auto-generated there no constants for them
 fwd_looking_price_fall_cols, fwd_looking_price_rise_cols = [x for x in daily_data.columns if 'HighestPercFallInNext' in x], \
-  [x for x in daily_data.columns if 'HighestPercRiseInNext' in x]
+    [x for x in daily_data.columns if 'HighestPercRiseInNext' in x]
 ```
 
 #### Show the median price change % for highest price fall whenever the RSI crosses above
@@ -145,11 +175,11 @@ daily_data[
 ```
 *Output*
 ```bat
-HighestPercFallInNext1Days     3.245288
-HighestPercFallInNext3Days     4.623437
-HighestPercFallInNext5Days     5.228839
-HighestPercFallInNext7Days     5.719615
-HighestPercFallInNext10Days    6.158358
+HighestPercFallInNext1Days     1.418923
+HighestPercFallInNext7Days     3.771446
+HighestPercFallInNext15Days    4.777241
+HighestPercFallInNext30Days    6.055861
+HighestPercFallInNext45Days    6.785467
 dtype: float64
 ```
 
@@ -161,15 +191,15 @@ daily_data[
 ```
 *Output*
 ```bat
-HighestPercRiseInNext1Days     0.985232
-HighestPercRiseInNext3Days     1.550388
-HighestPercRiseInNext5Days     2.071982
-HighestPercRiseInNext7Days     2.640740
-HighestPercRiseInNext10Days    3.314917
+HighestPercRiseInNext1Days      3.875000
+HighestPercRiseInNext7Days      7.589087
+HighestPercRiseInNext15Days     9.756772
+HighestPercRiseInNext30Days    13.255317
+HighestPercRiseInNext45Days    16.292135
 dtype: float64
 ```
 
-### Creating a DataReader
+### Extending the Framework: Creating a DataReader
 In this example we will create a new data reader to read data for Nasdaq listed equities. We will use **yfinance** python library for this.
 
 #### Import classes
@@ -274,7 +304,7 @@ result.get_daily_data() \
 | 1493 | NVDA         | 2023-12-28 00:00:00 |  495.22 | 58.305  |
 | 1742 | TSLA         | 2023-12-28 00:00:00 |  253.18 | 55.9788 |
 
-### Creating a CalculationWorker
+### ### Extending the Framework: Creating a CalculationWorker
 In this example, we will create a CalculationWorker to calcualte the Fibonacci Retracement level for any equity or index. Finbonacci Retracement levels are based on a time window and a level (26.3%, 50% etc). So, these will become input to our CalculationWorker. Lets call this worker as **FibnocciRetracementCalculationWorker**
 
 #### Implement the worker class. The important aspect here is to override the `add_calculated_columns()` method
@@ -285,7 +315,7 @@ from markets_insights.core.core import Instrumentation
 from markets_insights.calculations.base import BaseColumns
 import pandas
 
-class FibnocciRetracementCalculationWorker (CalculationWorker):
+class FibonacciRetracementCalculationWorker (CalculationWorker):
   def __init__(self, time_window: int, level_perct: float):
     self._time_window = time_window
     self._level = level_perct / 100
@@ -315,7 +345,7 @@ histDataProcessor = HistoricalDataProcessor(HistoricalDataProcessOptions(include
 result = histDataProcessor.process(NseIndicesReader(), {'from_date': datetime.date(2023, 12, 1), 'to_date': datetime.date(2023, 12, 31)})
 
 # Prepare calculation pipeline
-fbr50_worker = FibnocciRetracementCalculationWorker(time_window=7, level_perct=50)
+fbr50_worker = FibonacciRetracementCalculationWorker(time_window=7, level_perct=50)
 pipelines = MultiDataCalculationPipelines()
 histDataProcessor.set_calculation_pipelines(
   CalculationPipeline(
@@ -328,23 +358,18 @@ histDataProcessor.run_calculation_pipelines()
 ```
 
 ##### Display the results. 
-Since our time window was 15 days. So, the calculation result for first 14 days will not be available. We will look at the last 10 records with `tail(10)`
+Since our time window was 15 days. So, the calculation result for first 14 days will not be available. We will look at the last 10 records with `tail(5)`
 ```python
 result.get_daily_data()[[
   BaseColumns.Identifier, BaseColumns.Date, BaseColumns.Close, fbr50_worker._column_name
-]].tail(10)
+]].tail(5)
 ```
 
 *Output*
-|      | Identifier                        | Date                |    Close |    Fbr50 |
-|-----:|:----------------------------------|:--------------------|---------:|---------:|
-| 2136 | NIFTY500 SHARIAH                  | 2023-12-29 00:00:00 |  6410.93 |  6282.76 |
-| 2137 | NIFTY CPSE                        | 2023-12-29 00:00:00 |  4860.45 |  4755.07 |
-| 2138 | NIFTY100 LIQUID 15                | 2023-12-29 00:00:00 |  5827    |  5756.95 |
-| 2139 | NIFTY100 EQUAL WEIGHT             | 2023-12-29 00:00:00 | 26879.7  | 26315.2  |
-| 2140 | NIFTY HIGH BETA 50                | 2023-12-29 00:00:00 |  3401.85 |  3315.58 |
-| 2141 | NIFTY ALPHA 50                    | 2023-12-29 00:00:00 | 42306.3  | 41655.7  |
-| 2142 | NIFTY GROWTH SECTORS 15           | 2023-12-29 00:00:00 | 10787.7  | 10646.7  |
-| 2143 | NIFTY MIDSMALLCAP 400             | 2023-12-29 00:00:00 | 16015.5  | 15663    |
-| 2144 | NIFTY 50                          | 2023-12-29 00:00:00 | 21731.4  | 21464.4  |
-| 2145 | NIFTY 15 YR AND ABOVE G-SEC INDEX | 2023-12-29 00:00:00 |  3004.56 |  3004.09 |
+|      | Identifier                    | Date                |    Close |    Fbr50 |
+|-----:|:------------------------------|:--------------------|---------:|---------:|
+| 2141 | NIFTY COMPOSITE G-SEC INDEX   | 2023-12-29 00:00:00 |  2602.3  |  2599.48 |
+| 2142 | NIFTY 10 YR BENCHMARK G-SEC   | 2023-12-29 00:00:00 |  2232.79 |  2230.24 |
+| 2143 | NIFTY MIDCAP SELECT           | 2023-12-29 00:00:00 | 10397.5  | 10209.1  |
+| 2144 | NIFTY ALPHA LOW-VOLATILITY 30 | 2023-12-29 00:00:00 | 23373.2  | 22886    |
+| 2145 | NIFTY50 USD                   | 2023-12-29 00:00:00 |  9048.9  |  8941.77 |
