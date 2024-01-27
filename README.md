@@ -20,7 +20,9 @@ The calculation pipeline is quite extensible and more idicators can be added ext
 ### Installation
 ```python
 !pip install markets_insights
-import markets_insights
+
+from markets_insights.core.environment import Environment
+Environment.setup(cache_data_base_path = './cache-data')
 ```
 
 ### Get Index data for date range
