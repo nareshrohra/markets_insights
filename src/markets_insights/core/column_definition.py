@@ -61,6 +61,7 @@ class DerivativesCalculatedColumns (CalculatedColumnsBase):
   LotSize: str = 'LotSize'
 
 class DerivativesBaseColumns(BaseColumns):
+  InstrumentType: str = 'InstrumentType'
   AveragePrice: str = 'AvrgPric'
   OptionType: str = 'OptionType'
   ExpiryDate: str = 'ExpiryDate'

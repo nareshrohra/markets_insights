@@ -3,7 +3,7 @@ import markets_insights as mi
 
 from urllib.request import urlopen
 from zipfile import ZipFile
-from markets_insights.core.column_definition import BaseColumns, DerivativesBaseColumns
+from markets_insights.core.column_definition import BaseColumns, BasePriceColumns, DerivativesBaseColumns
 from markets_insights.core.environment import EnvironmentSettings
 import os
 from string import Template
@@ -11,7 +11,7 @@ import pandas as pd
 from urllib.error import HTTPError
 from datetime import date
 
-from markets_insights.core.core import MarketDaysHelper, Instrumentation
+from markets_insights.core.core import FilterBase, MarketDaysHelper, Instrumentation, TypeHelper
 
 class ReaderOptions:
   filename = Template("")
@@ -31,7 +31,13 @@ class DataReader:
     self.options = ReaderOptions()
     self.volume_scale: int = 1
     self.turnover_scale: int = 1
+    self.filter = None
     self.name = ""
+    self.col_prefix = None
+
+  def set_filter(self, filter: FilterBase):
+    self.filter = filter
+    return self
 
   def get_date_parts(self, for_date):
     return {
@@ -40,7 +46,19 @@ class DataReader:
       'day': str(for_date.strftime("%d"))
     }
 
+  def merge_with_operation_on_price(self, data_l: pd.DataFrame, data_r: pd.DataFrame, operation) -> pd.DataFrame:
+    merged_df = pd.merge(data_l, data_r, how='inner', 
+                         on=[BaseColumns.Identifier, BaseColumns.Date], left_index=False, right_index=False)
+    
+    for col in TypeHelper.get_class_static_values(BasePriceColumns):
+      merged_df[col] = operation(merged_df(merged_df[col+'_x'], merged_df[col+'_y']))
+    
+    return merged_df
+
   def read(self, for_date) -> pd.DataFrame:
+    return self.read_data(for_date)
+  
+  def read_data(self, for_date) -> pd.DataFrame:
     date_parts = self.get_date_parts(for_date)
     filenames = self.get_filenames(for_date)
     output_file_path = self.options.output_path_template.substitute( **({**EnvironmentSettings.Paths, **filenames}) )
@@ -68,6 +86,18 @@ class DataReader:
 
     data.drop_duplicates(inplace=True)
 
+    self.normalise_base_column_values(data)
+    
+    if self.filter:
+      data = data.query(str(self.filter))
+
+    return self.sanitize_data(data)
+
+  def normalise_base_column_values(self, data: pd.DataFrame) -> pd.DataFrame:
+    for col_name in [BaseColumns.Open, BaseColumns.High, BaseColumns.Low]:
+      data[col_name] = data.apply(lambda x: x[col_name] if str(x[col_name]).replace(".", "").isnumeric() == True else x[BaseColumns.Close], axis=1)
+      data[col_name] = data[col_name].astype(float)
+
     for col_name in [BaseColumns.Volume, BaseColumns.Turnover]:
       if col_name in data.columns:
         data[col_name] = data[col_name].apply(lambda val: val if str(val).replace(".", "").isnumeric() == True else math.nan).astype(float)
@@ -76,7 +106,7 @@ class DataReader:
       if rescaling[1] != 1:
         data[rescaling[0]] = data[rescaling[0]] * rescaling[1]
 
-    return self.filter_data(data)
+    return data
 
   def unzip_content(self, output_file_path, unzip_folder_path, for_date):
     zf = ZipFile(output_file_path)
@@ -94,13 +124,83 @@ class DataReader:
   def get_column_name_mappings(self):
     return None
   
-  def filter_data(self, data):
+  def sanitize_data(self, data):
     return data
+
+  def __sub__(self, other):
+    return ArithmaticOpReader(left = self, right = other, operator = lambda x, y: x - y, op_symbol = "-")
+
+  def __add__(self, other):
+    return ArithmaticOpReader(left = self, right = other, operator = lambda x, y: x + y, op_symbol = "+")
+  
+  def __mul__(self, other):
+    return ArithmaticOpReader(left = self, right = other, operator = lambda x, y: x * y, op_symbol = "x")
+  
+  def __truediv__(self, other):
+    return ArithmaticOpReader(left = self, right = other, operator = lambda x, y: x / y, op_symbol = " div ")
+
+class ArithmaticOpReader(DataReader):
+  def __init__(self, left: DataReader, right: DataReader, operator, op_symbol: str):
+    super().__init__()
+    self.l_reader = left
+    self.r_reader = right
+    self.operator = operator
+    self.op_symbol = op_symbol
+    self.col_prefix = ""
+    self.name = f"{left.name}{op_symbol}{right.name}"
+  
+  def read(self, for_date: date) -> pd.DataFrame:
+    l_data = self.l_reader.read(for_date = for_date)
+    r_data = self.r_reader.read(for_date = for_date)
+
+    on_cols = None
+    prefix_l = None
+    prefix_r = None
+    
+    rename_id_col = False
+    if len(l_data[BaseColumns.Identifier].unique()) == 1:
+      on_cols = [BaseColumns.Date]
+      rename_id_col = True
+      prefix_l = l_data[BaseColumns.Identifier].values[0]+"-"
+      prefix_r = self.r_reader.col_prefix
+    elif len(r_data[BaseColumns.Identifier].unique()) == 1:
+      on_cols = [BaseColumns.Date]
+      rename_id_col = True
+      prefix_l = self.l_reader.col_prefix
+      prefix_r = r_data[BaseColumns.Identifier].values[0]+"-"
+    else:
+      on_cols = [BaseColumns.Identifier, BaseColumns.Date]
+      rename_id_col = False
+      prefix_l = self.l_reader.col_prefix
+      prefix_r = self.r_reader.col_prefix
+
+    if not (f"{prefix_l}{BaseColumns.Close}" in l_data.columns and f"{prefix_r}{BaseColumns.Close}" in l_data.columns):
+      merged_df = pd.merge(l_data, r_data, how='inner', on=on_cols, 
+                            left_index=False, right_index=False)
+      if rename_id_col:
+        merged_df.rename(columns={f"{BaseColumns.Identifier}_x": BaseColumns.Identifier}, inplace=True)
+      
+      update_col_prefix = {}
+      for col in [col for col in merged_df.columns if '_x' in col]:
+        update_col_prefix[col] = f"{prefix_l}{col.replace('_x', '')}"
+      for col in [col for col in merged_df.columns if '_y' in col]:
+        update_col_prefix[col] = f"{prefix_r}{col.replace('_y', '')}"
+      
+      merged_df.rename(columns=update_col_prefix, inplace=True)
+    else:
+      merged_df = l_data
+      
+    for col in TypeHelper.get_class_static_values(BasePriceColumns):
+      Instrumentation.info(f"{prefix_l}{col} {self.op_symbol} {prefix_r}{col}")
+      merged_df[col] = self.operator(merged_df[f"{prefix_l}{col}"], merged_df[f"{prefix_r}{col}"])
+    
+    return merged_df
 
 class BhavCopyReader(DataReader):
   def __init__(self):
     super().__init__()
     self.name = "nse_equities"
+    self.col_prefix = "Cash-"
     __base_url = "https://archives.nseindia.com/content/historical/EQUITIES/"
     self.options.url_template = Template(__base_url + "$year/$month/$download_filename")
     self.options.output_path_template = Template(f"$DataBaseDir/$RawDataDir/$BhavDataDir/$download_filename")
@@ -127,13 +227,14 @@ class BhavCopyReader(DataReader):
       'TOTTRDVAL': BaseColumns.Turnover
     }
 
-  def filter_data(self, data):
+  def sanitize_data(self, data):
     return data[data['SERIES'] == 'EQ'].reset_index(drop=True)
 
 class NseIndicesReader(DataReader):
   def __init__(self):
     super().__init__()
     self.name = "Indices"
+    self.col_prefix = "Index-"
     self.turnover_scale = math.pow(10, 7)
     __base_url = "https://archives.nseindia.com/content/indices/"
     self.options.unzip_file = False
@@ -161,13 +262,14 @@ class NseIndicesReader(DataReader):
     }
 
 class NseDerivatiesReaderBase(DataReader):
-  def filter_data(self, data):
+  def sanitize_data(self, data):
     return data[data['OpenInterest'] > 0].reset_index(drop=True)
 
 class NseDerivatiesReader(NseDerivatiesReaderBase):
   def __init__(self):
     super().__init__()
     self.name = "Derivatives"
+    self.col_prefix = "FO-"
     self.turnover_scale = math.pow(10, 7)
     self.options.unzip_file = False
     __base_url = "https://archives.nseindia.com/content/fo/"
@@ -197,13 +299,15 @@ class NseDerivatiesReader(NseDerivatiesReaderBase):
       'ClsPric': BaseColumns.Close,
       'OpnIntrst': DerivativesBaseColumns.OpenInterest,
       'PctgChngInOpnIntrst': DerivativesBaseColumns.OiChangePct,
-      'StrkPric': DerivativesBaseColumns.StrikePrice
+      'StrkPric': DerivativesBaseColumns.StrikePrice,
+      'FinInstrmNm': DerivativesBaseColumns.InstrumentType
     }
 
 class NseDerivatiesOldReader(NseDerivatiesReaderBase):
   def __init__(self):
     super().__init__()
     self.name = "Derivatives"
+    self.col_prefix = "FO-"
     self.turnover_scale = math.pow(10, 7)
     __base_url = "https://archives.nseindia.com/content/historical/DERIVATIVES/"
     self.options.url_template = Template(__base_url + "$year/$month/$download_filename")

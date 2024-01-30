@@ -1,4 +1,4 @@
-from markets_insights.core.column_definition import BaseColumns, CalculatedColumns, CalculatedColumnsBase
+from markets_insights.core.column_definition import BaseColumns, CalculatedColumns, CalculatedColumnsBase, DerivativesBaseColumns
 from markets_insights.core.settings import MarketDaysSettings
 from markets_insights.core.environment import EnvironmentSettings
 from datetime import date
@@ -188,7 +188,17 @@ class IdentifierFilter(FilterBase):
   def __init__(self, identifier: str):
     super().__init__()
     self.add_criteria(FilterCriteria(
-        col_to_filter=BaseColumns.Identifier,
+        col_to_filter = BaseColumns.Identifier,
+        condition = "==",
+        condition_value = f"'{identifier}'"
+      )
+    )
+
+class InstrumentTypeFilter(FilterBase):
+  def __init__(self, identifier: str):
+    super().__init__()
+    self.add_criteria(FilterCriteria(
+        col_to_filter = DerivativesBaseColumns.InstrumentType,
         condition = "==",
         condition_value = f"'{identifier}'"
       )
@@ -198,7 +208,7 @@ class DateFilter(FilterBase):
   def __init__(self, for_date: date = None):
     super().__init__()
     self.add_criteria(FilterCriteria(
-        col_to_filter=BaseColumns.Date,
+        col_to_filter = BaseColumns.Date,
         condition = "==",
         condition_value = f"'{for_date}'"
       )
@@ -209,7 +219,7 @@ class DateRangeFilter(FilterBase):
     super().__init__()
     if from_date is not None:
       self.add_criteria(FilterCriteria(
-          col_to_filter=BaseColumns.Date,
+          col_to_filter = BaseColumns.Date,
           condition = ">=",
           condition_value = f"'{from_date}'"
         )
@@ -228,7 +238,7 @@ class DatePartsFilter(FilterBase):
     super().__init__()
     if month_no is not None:
       self.add_criteria(FilterCriteria(
-          col_to_filter=CalculatedColumns.MonthNo,
+          col_to_filter = CalculatedColumns.MonthNo,
           condition = "==",
           condition_value = month_no
         )

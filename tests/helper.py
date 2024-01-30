@@ -27,6 +27,7 @@ class PresetDates:
   dec_end: datetime.datetime = year_end
   q4_start: datetime.datetime = MarketDaysHelper.get_this_or_next_market_day(datetime.date(year=test_year, month=10, day=1))
   q4_end: datetime.datetime = year_end
+  recent_day: datetime.datetime = MarketDaysHelper.get_this_or_previous_market_day(datetime.date.today() - datetime.timedelta(days=1))
   
 class PresetFilters:
   nifty50 = IdentifierFilter("NIFTY 50")

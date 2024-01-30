@@ -306,7 +306,7 @@ result.get_daily_data() \
 | 1493 | NVDA         | 2023-12-28 00:00:00 |  495.22 | 58.305  |
 | 1742 | TSLA         | 2023-12-28 00:00:00 |  253.18 | 55.9788 |
 
-### ### Extending the Framework: Creating a CalculationWorker
+### Extending the Framework: Creating a CalculationWorker
 In this example, we will create a CalculationWorker to calcualte the Fibonacci Retracement level for any equity or index. Finbonacci Retracement levels are based on a time window and a level (26.3%, 50% etc). So, these will become input to our CalculationWorker. Lets call this worker as **FibnocciRetracementCalculationWorker**
 
 #### Implement the worker class. The important aspect here is to override the `add_calculated_columns()` method
