@@ -146,6 +146,8 @@ class ArithmaticOpReader(DataReader):
     self.r_reader = right
     self.operator = operator
     self.op_symbol = op_symbol
+    self.l_prefix = None
+    self.r_prefix = None
     self.col_prefix = ""
     self.name = f"{left.name}{op_symbol}{right.name}"
   
@@ -157,28 +159,28 @@ class ArithmaticOpReader(DataReader):
     prefix_l = None
     prefix_r = None
     
-    rename_id_col = False
+    rename_id_col_with_suffix = None
     if len(l_data[BaseColumns.Identifier].unique()) == 1:
       on_cols = [BaseColumns.Date]
-      rename_id_col = True
-      prefix_l = l_data[BaseColumns.Identifier].values[0]+"-"
+      rename_id_col_with_suffix = "_y"
+      prefix_l = l_data[BaseColumns.Identifier].values[0] + "-"
       prefix_r = self.r_reader.col_prefix
     elif len(r_data[BaseColumns.Identifier].unique()) == 1:
       on_cols = [BaseColumns.Date]
-      rename_id_col = True
+      rename_id_col_with_suffix = "_x"
       prefix_l = self.l_reader.col_prefix
-      prefix_r = r_data[BaseColumns.Identifier].values[0]+"-"
+      prefix_r = r_data[BaseColumns.Identifier].values[0] + "-"
     else:
       on_cols = [BaseColumns.Identifier, BaseColumns.Date]
-      rename_id_col = False
+      rename_id_col_with_suffix = None
       prefix_l = self.l_reader.col_prefix
       prefix_r = self.r_reader.col_prefix
 
     if not (f"{prefix_l}{BaseColumns.Close}" in l_data.columns and f"{prefix_r}{BaseColumns.Close}" in l_data.columns):
       merged_df = pd.merge(l_data, r_data, how='inner', on=on_cols, 
                             left_index=False, right_index=False)
-      if rename_id_col:
-        merged_df.rename(columns={f"{BaseColumns.Identifier}_x": BaseColumns.Identifier}, inplace=True)
+      if rename_id_col_with_suffix:
+        merged_df.rename(columns={f"{BaseColumns.Identifier}{rename_id_col_with_suffix}": BaseColumns.Identifier}, inplace=True)
       
       update_col_prefix = {}
       for col in [col for col in merged_df.columns if '_x' in col]:
@@ -194,6 +196,9 @@ class ArithmaticOpReader(DataReader):
       Instrumentation.info(f"{prefix_l}{col} {self.op_symbol} {prefix_r}{col}")
       merged_df[col] = self.operator(merged_df[f"{prefix_l}{col}"], merged_df[f"{prefix_r}{col}"])
     
+    self.l_prefix = prefix_l
+    self.r_prefix = prefix_r
+
     return merged_df
 
 class BhavCopyReader(DataReader):
