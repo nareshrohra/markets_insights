@@ -64,5 +64,9 @@ def check_price_cols_present(data: pd.DataFrame, period: str):
 
 def check_col_values(data: pd.DataFrame, col_value_pairs: dict):
   for col_name in col_value_pairs:
-    if not float(data[col_name].values[0]) == pytest.approx(col_value_pairs[col_name]):
-      assert pytest.fail(f"column `{col_name}` value check: {data[col_name].values[0]} <> {col_value_pairs[col_name]}")
+    if isinstance(col_value_pairs[col_name], float):
+      if not float(data[col_name].values[0]) == pytest.approx(col_value_pairs[col_name]):
+        assert pytest.fail(f"column `{col_name}` value check: {data[col_name].values[0]} <> {col_value_pairs[col_name]}")
+    else:
+      if not data[col_name].values[0] == col_value_pairs[col_name]:
+        assert pytest.fail(f"column `{col_name}` value check: {data[col_name].values[0]} <> {col_value_pairs[col_name]}")

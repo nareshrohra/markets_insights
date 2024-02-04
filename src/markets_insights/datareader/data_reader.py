@@ -160,16 +160,16 @@ class ArithmaticOpReader(DataReader):
     prefix_r = None
     
     rename_id_col_with_suffix = None
-    if len(l_data[BaseColumns.Identifier].unique()) == 1:
-      on_cols = [BaseColumns.Date]
-      rename_id_col_with_suffix = "_y"
-      prefix_l = l_data[BaseColumns.Identifier].values[0] + "-"
-      prefix_r = self.r_reader.col_prefix
-    elif len(r_data[BaseColumns.Identifier].unique()) == 1:
+    if len(r_data[BaseColumns.Identifier].unique()) == 1:
       on_cols = [BaseColumns.Date]
       rename_id_col_with_suffix = "_x"
       prefix_l = self.l_reader.col_prefix
       prefix_r = r_data[BaseColumns.Identifier].values[0] + "-"
+    elif len(l_data[BaseColumns.Identifier].unique()) == 1:
+      on_cols = [BaseColumns.Date]
+      rename_id_col_with_suffix = "_y"
+      prefix_l = l_data[BaseColumns.Identifier].values[0] + "-"
+      prefix_r = self.r_reader.col_prefix
     else:
       on_cols = [BaseColumns.Identifier, BaseColumns.Date]
       rename_id_col_with_suffix = None

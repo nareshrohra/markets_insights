@@ -85,6 +85,7 @@ def test_arithmatic_op(operation, close):
   check_col_values(
     data,
     col_value_pairs = {
+      BaseColumns.Identifier: "RELIANCE",
       BaseColumns.Close: close
     }
   )
@@ -131,12 +132,39 @@ def test_arithmatic_op_single_id_left(operation, close):
   check_col_values(
     data,
     col_value_pairs = {
+      BaseColumns.Identifier: "Nifty 50",
       BaseColumns.Close: close
     }
   )
 
   assert op_reader.l_prefix == "India VIX-"
   assert op_reader.r_prefix == "Index-"
+  
+  assert f"{indices_reader.col_prefix}{BaseColumns.Close}" in data.columns
+  assert f"India VIX-{BaseColumns.Close}" in data.columns
+
+@pytest.mark.parametrize("operation,close", [
+  (lambda x, y: x + y, 20280.280000000002),
+  (lambda x, y: x - y, 20255.52),
+  (lambda x, y: x / y, 1637.1486268174476),
+  (lambda x, y: x * y, 250916.60200000004)
+])
+def test_arithmatic_op_single_id_both(operation, close):
+  indices_reader = NseIndicesReader().set_filter(IdentifierFilter("Nifty 50"))
+  vix_reader = NseIndicesReader().set_filter(IdentifierFilter("India VIX"))
+  op_reader: DataReader = operation(indices_reader, vix_reader)
+  data = op_reader.read(for_date = PresetDates.dec_start)
+  
+  check_col_values(
+    data,
+    col_value_pairs = {
+      BaseColumns.Identifier: "Nifty 50",
+      BaseColumns.Close: close
+    }
+  )
+
+  assert op_reader.l_prefix == "Index-"
+  assert op_reader.r_prefix == "India VIX-"
   
   assert f"{indices_reader.col_prefix}{BaseColumns.Close}" in data.columns
   assert f"India VIX-{BaseColumns.Close}" in data.columns
@@ -149,6 +177,7 @@ def test_arithmatic_multiple_ops():
   check_col_values(
     data,
     col_value_pairs = {
+      BaseColumns.Identifier: "RELIANCE",
       BaseColumns.Close: 29.0
     }
   )
