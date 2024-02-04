@@ -1,12 +1,12 @@
 from datetime import date
 
+
 class BaseUrls:
     ParticipiantWiseOIData = ""
 
+
 class MarketDaysSettings:
-    HolidayOpenings = [
-        date(2020, 2, 24) #open for Diwali Muhurat
-    ],
+    HolidayOpenings = ([date(2020, 2, 24)],)  # open for Diwali Muhurat
     MarketHolidays = [
         date(2013, 10, 16),
         date(2013, 10, 2),
@@ -111,7 +111,7 @@ class MarketDaysSettings:
         date(2018, 3, 30),
         date(2018, 4, 10),
         date(2018, 4, 6),
-        date(2018, 4, 9),    
+        date(2018, 4, 9),
         date(2018, 5, 1),
         date(2018, 8, 15),
         date(2018, 8, 22),
@@ -198,5 +198,5 @@ class MarketDaysSettings:
         date(2023, 5, 1),
         date(2023, 6, 29),
         date(2023, 8, 15),
-        date(2023, 9, 19)
+        date(2023, 9, 19),
     ]
