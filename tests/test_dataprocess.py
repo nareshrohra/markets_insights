@@ -2,6 +2,7 @@ import pytest
 import pandas as pd
 
 from helper import check_col_values, setup, check_base_cols_present, Presets
+from markets_insights.core.core import IdentifierFilter
 
 setup()
 
@@ -104,3 +105,12 @@ def test_historical_data_processor_annual_aggregration():
             BaseColumns.Turnover: 58075646100000.0,
         },
     )
+
+def test_historical_data_processor_with_filter():
+    processor = HistoricalDataProcessor()
+    result = processor.process(
+        NseIndicesReader().set_filter(IdentifierFilter("Nifty 50")),
+        {"from_date": Presets.dates.year_start, "to_date": Presets.dates.year_end},
+    )
+
+    assert len(result.get_daily_data()[BaseColumns.Identifier].unique()) == 1

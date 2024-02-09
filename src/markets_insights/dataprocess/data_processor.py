@@ -321,14 +321,15 @@ class HistoricalDataProcessor(DataProcessor):
         historical_data = self.get_data(reader, options, from_date, to_date)
         manual_data = self.get_manual_data(reader, options, from_date, to_date)
 
-        # self.rename_columns(reader, historical_data)
-
         if manual_data is not None:
             historical_data = (
                 pd.concat([historical_data, manual_data], ignore_index=True)
                 .reset_index(drop=True)
                 .sort_values(BaseColumns.Date)
             )
+
+        if reader.filter:
+            historical_data = historical_data.query(reader.filter.get_query())
 
         historical_data[BaseColumns.Identifier] = historical_data[
             BaseColumns.Identifier
@@ -530,6 +531,8 @@ class HistoricalDataProcessor(DataProcessor):
             )
             historical_data.to_csv(output_file, index=False)
 
-        return historical_data[
+        historical_data = historical_data[
             historical_data[BaseColumns.Date].dt.date.between(from_date, to_date)
         ]
+        
+        return historical_data
