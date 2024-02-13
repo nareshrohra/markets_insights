@@ -43,7 +43,7 @@ class CalculationPipeline:
 
 
 class ValueCrossedAboveFlagWorker(CalculationWorker):
-    def __init__(self, value_column: str, value):
+    def __init__(self, value_column: str = None, value = None):
         super().__init__(value_column = value_column, value = value)
         self._columns.append(f"{value_column}CrossedAbove")
 
@@ -56,7 +56,7 @@ class ValueCrossedAboveFlagWorker(CalculationWorker):
 
 
 class ValueCrossedBelowFlagWorker(CalculationWorker):
-    def __init__(self, value_column: str, value):
+    def __init__(self, value_column: str = None, value = None):
         super().__init__(value_column = value_column, value = value)
         self._columns.append(f"{value_column}CrossedBelow")
 
@@ -69,7 +69,7 @@ class ValueCrossedBelowFlagWorker(CalculationWorker):
 
 
 class PriceCrossedAboveValueFlagWorker(CalculationWorker):
-    def __init__(self, value_column: str):
+    def __init__(self, value_column: str = None):
         super().__init__(value_column = value_column)
         self._columns.append(f"PriceCrossedAbove{value_column}")
 
@@ -81,7 +81,7 @@ class PriceCrossedAboveValueFlagWorker(CalculationWorker):
 
 
 class PriceCrossedBelowValueFlagWorker(CalculationWorker):
-    def __init__(self, value_column: str):
+    def __init__(self, value_column: str = None):
         super().__init__(value_column = value_column)
         self._columns.append(f"PriceCrossedBelow{value_column}")
 
@@ -242,12 +242,11 @@ class RsiCalculationWorker(CalculationWorker):
 class StochRsiCalculationWorker(CalculationWorker):
     def __init__(self, time_window: int = 14):
         super().__init__(time_window = time_window)
-        self._time_window = time_window
         self._columns.append(CalculatedColumns.StochRsi_K)
         self._columns.append(CalculatedColumns.StochRsi_D)
 
     def calculate_stoch_rsi(self, group: pd.DataFrame):
-        data = ta.stochrsi(group[BaseColumns.Close], window=14, smooth1=3, smooth2=3)
+        data = ta.stochrsi(group[BaseColumns.Close], window=self._params['time_window'], smooth1=3, smooth2=3)
         if data is not None:
             group[CalculatedColumns.StochRsi_K] = data["STOCHRSIk_14_14_3_3"]
             group[CalculatedColumns.StochRsi_D] = data["STOCHRSId_14_14_3_3"]
@@ -264,28 +263,30 @@ class StochRsiCalculationWorker(CalculationWorker):
 class VwapCalculationWorker(CalculationWorker):
     def __init__(self, time_window: int = 200):
         super().__init__(time_window = time_window)
-        self._time_window = time_window
         self._columns.append(CalculatedColumns.Vwap)
 
     @Instrumentation.trace(name="VwapCalculationWorker")
     def add_calculated_columns(self, data):
         data[BaseColumns.Turnover] = data[BaseColumns.Turnover].replace("-", 0)
         data[BaseColumns.Volume] = data[BaseColumns.Volume].replace("-", 0)
-        data[CalculatedColumns.Vwap] = (
-            data.groupby(BaseColumns.Identifier)
-            .apply(
-                lambda x: x[BaseColumns.Turnover].rolling(self._time_window).sum()
-                / x.rolling(self._time_window)[BaseColumns.Volume].sum()
+        if len(data[BaseColumns.Identifier].unique()) > 1:
+            data[CalculatedColumns.Vwap] = (
+                data.groupby(BaseColumns.Identifier)
+                .apply(
+                    lambda x: x[BaseColumns.Turnover].rolling(self._params['time_window']).sum()
+                    / x.rolling(self._params['time_window'])[BaseColumns.Volume].sum()
+                )
+                .reset_index(level=0, drop=True)
             )
-            .reset_index(level=0, drop=True)
-        )
+        else:
+            data[CalculatedColumns.Vwap] = data[BaseColumns.Turnover].rolling(self._params['time_window']).sum() / data[BaseColumns.Volume].rolling(self._params['time_window']).sum()
 
 
 class LowestPriceInNextNDaysCalculationWorker(CalculationWorker):
-    def __init__(self, time_window):
-        super().__init__(time_window = time_window)
-        self._columns.append(f"TroughInNext{str(time_window)}Sessions")
-        self._columns.append(f"TroughPercInNext{str(time_window)}Sessions")
+    def __init__(self, N: int = None):
+        super().__init__(N = N)
+        self._columns.append(f"TroughInNext{str(N)}Sessions")
+        self._columns.append(f"TroughPercInNext{str(N)}Sessions")
 
     @Instrumentation.trace(name="LowestPriceInNextNDaysCalculationWorker")
     def add_calculated_columns(self, data):
@@ -293,7 +294,7 @@ class LowestPriceInNextNDaysCalculationWorker(CalculationWorker):
         data[self._columns[0]] = identifier_grouped_data[
             BaseColumns.Low
         ].transform(
-            lambda x: x.rolling(self._params['time_window']).min().shift(-self._params['time_window'])
+            lambda x: x.rolling(self._params['N']).min().shift(-self._params['N'])
         )
         data[self._columns[1]] = (
             (data[BaseColumns.Close] - data[self._columns[0]])
@@ -303,10 +304,10 @@ class LowestPriceInNextNDaysCalculationWorker(CalculationWorker):
 
 
 class HighestPriceInNextNDaysCalculationWorker(CalculationWorker):
-    def __init__(self, time_window):
-        super().__init__(time_window = time_window)
-        self._columns.append(f"PeakInNext{str(time_window)}Sessions")
-        self._columns.append(f"PeakPercInNext{str(time_window)}Sessions")
+    def __init__(self, N: int = None):
+        super().__init__(N = N)
+        self._columns.append(f"PeakInNext{str(N)}Sessions")
+        self._columns.append(f"PeakPercInNext{str(N)}Sessions")
 
     @Instrumentation.trace(name="HighestPriceInNextNDaysCalculationWorker")
     def add_calculated_columns(self, data):
@@ -314,7 +315,7 @@ class HighestPriceInNextNDaysCalculationWorker(CalculationWorker):
         data[self._columns[0]] = identifier_grouped_data[
             BaseColumns.High
         ].transform(
-            lambda x: x.rolling(self._params['time_window']).max().shift(-self._params['time_window'])
+            lambda x: x.rolling(self._params['N']).max().shift(-self._params['N'])
         )
         data[self._columns[1]] = (
             (data[self._columns[0]] - data[BaseColumns.Close])

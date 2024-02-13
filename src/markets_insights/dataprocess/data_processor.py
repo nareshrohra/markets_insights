@@ -329,7 +329,7 @@ class HistoricalDataProcessor(DataProcessor):
             )
 
         if reader.filter:
-            historical_data = historical_data.query(reader.filter.get_query())
+            historical_data = pd.DataFrame(historical_data.query(reader.filter.get_query()))
 
         historical_data[BaseColumns.Identifier] = historical_data[
             BaseColumns.Identifier

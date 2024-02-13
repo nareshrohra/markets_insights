@@ -165,6 +165,38 @@ def test_calculations_vwap(identifier: str, for_date: date, vwap: float):
         col_value_pairs={CalculatedColumns.Vwap: vwap},
     )
 
+@pytest.mark.parametrize(
+    "identifier,for_date,vwap",
+    [
+        ("RELIANCE", date(2023, 12, 21), 2383.908377),
+        ("INFY", date(2023, 12, 27), 1457.663944),
+        ("HDFCBANK", date(2023, 12, 29), 1572.029516),
+    ],
+)
+def test_calculations_vwap_with_identifier(identifier: str, for_date: date, vwap: float):
+    processor = HistoricalDataProcessor()
+    result: HistoricalDataset = processor.process(
+        BhavCopyReader().set_filter(IdentifierFilter(identifier)),
+        {"from_date": Presets.dates.year_start, "to_date": Presets.dates.year_end},
+    )
+
+    # Prepare calculation pipeline
+    pipelines = MultiDataCalculationPipelines()
+    worker = VwapCalculationWorker(time_window=50)
+    pipelines.set_item(
+        "vwap", CalculationPipelineBuilder.create_pipeline_for_worker(worker)
+    )
+    processor.set_calculation_pipelines(pipelines)
+
+    # Run the pipeline and get data
+    processor.run_calculation_pipelines()
+    daily_data = result.get_daily_data()
+
+    check_col_values(
+        data=daily_data.query(str(DateFilter(for_date))),
+        col_value_pairs={CalculatedColumns.Vwap: vwap},
+    )
+
 
 def test_calculations_bb():
     # Prepare calculation pipeline
