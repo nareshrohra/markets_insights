@@ -43,8 +43,8 @@ class CalculationPipeline:
 
 
 class ValueCrossedAboveFlagWorker(CalculationWorker):
-    def __init__(self, value_column: str = None, value = None):
-        super().__init__(value_column = value_column, value = value)
+    def __init__(self, value_column: str = None, value: int = 0):
+        super().__init__(value_column = value_column, value = int(value))
         self._columns.append(f"{value_column}CrossedAbove")
 
     @Instrumentation.trace(name="ValueCrossedAboveFlagWorker")
@@ -56,8 +56,8 @@ class ValueCrossedAboveFlagWorker(CalculationWorker):
 
 
 class ValueCrossedBelowFlagWorker(CalculationWorker):
-    def __init__(self, value_column: str = None, value = None):
-        super().__init__(value_column = value_column, value = value)
+    def __init__(self, value_column: str = None, value: int = 0):
+        super().__init__(value_column = value_column, value = int(value))
         self._columns.append(f"{value_column}CrossedBelow")
 
     @Instrumentation.trace(name="ValueCrossedBelowFlagWorker")
@@ -110,7 +110,7 @@ class DatePartsCalculationWorker(CalculationWorker):
 
 class SmaCalculationWorker(CalculationWorker):
     def __init__(self, time_window: int = 50):
-        super().__init__(time_window = time_window)
+        super().__init__(time_window = int(time_window))
         self._columns.append(f"Sma{str(time_window)}")
 
     @Instrumentation.trace(name="SmaCalculationWorker")
@@ -123,7 +123,7 @@ class SmaCalculationWorker(CalculationWorker):
 
 class StdDevCalculationWorker(CalculationWorker):
     def __init__(self, time_window: int = 200):
-        super().__init__(time_window = time_window)
+        super().__init__(time_window = int(time_window))
         self._columns.append(f"StdDev{time_window}")
 
     @Instrumentation.trace(name="StdDevCalculationWorker")
@@ -136,7 +136,7 @@ class StdDevCalculationWorker(CalculationWorker):
 
 class BollingerBandCalculationWorker(CalculationWorker):
     def __init__(self, time_window: int = 200, deviation: int = 2):
-        super().__init__(time_window = time_window, deviation = deviation)
+        super().__init__(time_window = int(time_window), deviation = int(deviation))
         self._columns.append(f"Bb{str(time_window)}Dev{str(deviation)}Lower")
         self._columns.append(f"Bb{str(time_window)}Dev{str(deviation)}Upper")
 
@@ -222,7 +222,7 @@ class RsiOldCalculationWorker(CalculationWorker):
 
 class RsiCalculationWorker(CalculationWorker):
     def __init__(self, time_window: int = 14):
-        super().__init__(time_window = time_window)
+        super().__init__(time_window = int(time_window))
         self._columns.append(CalculatedColumns.RelativeStrengthIndex)
 
     def calculate_rsi(self, group):
@@ -241,7 +241,7 @@ class RsiCalculationWorker(CalculationWorker):
 
 class StochRsiCalculationWorker(CalculationWorker):
     def __init__(self, time_window: int = 14):
-        super().__init__(time_window = time_window)
+        super().__init__(time_window = int(time_window))
         self._columns.append(CalculatedColumns.StochRsi_K)
         self._columns.append(CalculatedColumns.StochRsi_D)
 
@@ -262,7 +262,7 @@ class StochRsiCalculationWorker(CalculationWorker):
 
 class VwapCalculationWorker(CalculationWorker):
     def __init__(self, time_window: int = 200):
-        super().__init__(time_window = time_window)
+        super().__init__(time_window = int(time_window))
         self._columns.append(CalculatedColumns.Vwap)
 
     @Instrumentation.trace(name="VwapCalculationWorker")
@@ -283,8 +283,8 @@ class VwapCalculationWorker(CalculationWorker):
 
 
 class LowestPriceInNextNDaysCalculationWorker(CalculationWorker):
-    def __init__(self, N: int = None):
-        super().__init__(N = N)
+    def __init__(self, N: int = 5):
+        super().__init__(N = int(N))
         self._columns.append(f"TroughInNext{str(N)}Sessions")
         self._columns.append(f"TroughPercInNext{str(N)}Sessions")
 
@@ -304,8 +304,8 @@ class LowestPriceInNextNDaysCalculationWorker(CalculationWorker):
 
 
 class HighestPriceInNextNDaysCalculationWorker(CalculationWorker):
-    def __init__(self, N: int = None):
-        super().__init__(N = N)
+    def __init__(self, N: int = 5):
+        super().__init__(N = int(N))
         self._columns.append(f"PeakInNext{str(N)}Sessions")
         self._columns.append(f"PeakPercInNext{str(N)}Sessions")
 
