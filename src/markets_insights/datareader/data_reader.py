@@ -45,6 +45,7 @@ class DataReader:
         self.filter = None
         self.name = ""
         self.col_prefix = None
+        self.skip_filter = False
 
     def set_filter(self, filter: FilterBase):
         self.filter = filter
@@ -78,6 +79,14 @@ class DataReader:
 
     def read(self, for_date) -> pd.DataFrame:
         return self.read_data(for_date)
+    
+    def unset_filter(self):
+        self.skip_filter = True
+        return self
+    
+    def reset_filter(self):
+        self.skip_filter = False
+        return self
 
     def read_data(self, for_date) -> pd.DataFrame:
         date_parts = self.get_date_parts(for_date)
@@ -115,7 +124,7 @@ class DataReader:
 
         self.normalise_base_column_values(data)
 
-        if self.filter:
+        if self.filter and self.skip_filter == False:
             data = data.query(str(self.filter))
 
         return self.sanitize_data(data)
