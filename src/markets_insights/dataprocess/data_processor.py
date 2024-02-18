@@ -519,7 +519,8 @@ class HistoricalDataProcessor(DataProcessor):
                 save_to_file = True
         else:
             Instrumentation.info(f"Reading data from {from_date} to {to_date}")
-            historical_data = dateRangeReader.unset_filter().read(from_date, to_date).reset_filter()
+            historical_data = dateRangeReader.unset_filter().read(from_date, to_date)
+            dateRangeReader.reset_filter()
             save_to_file = True
 
         historical_data[BaseColumns.Date] = pd.to_datetime(

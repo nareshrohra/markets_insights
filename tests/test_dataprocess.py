@@ -27,7 +27,7 @@ def test_historical_data_processor_without_options():
         {"from_date": Presets.dates.dec_start, "to_date": Presets.dates.dec_end},
     )
     check_base_cols_present(result.get_daily_data(), "Daily")
-    assert result.get_daily_data().shape[0] == 2254
+    assert result.get_daily_data().shape[0] == 2146
 
     check_base_cols_present(result.get_monthly_data(), AggregationPeriods.Monthly)
     assert result.get_monthly_data().shape[0] == 108
@@ -81,7 +81,7 @@ def test_historical_data_processor_monthly_aggregration():
             BaseColumns.High: 21801.45,
             BaseColumns.Low: 20183.7,
             BaseColumns.Close: 21731.4,
-            BaseColumns.Turnover: 5989275100000.0,
+            BaseColumns.Turnover: 5752296300000.0,
         },
     )
 
@@ -102,7 +102,7 @@ def test_historical_data_processor_annual_aggregration():
             BaseColumns.High: 21801.45,
             BaseColumns.Low: 16828.35,
             BaseColumns.Close: 21731.4,
-            BaseColumns.Turnover: 58312624900000.0,
+            BaseColumns.Turnover: 58075646100000.0,
         },
     )
 
