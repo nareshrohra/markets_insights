@@ -213,9 +213,16 @@ class ArithmaticOpReader(DataReader):
         self.name = f"{left.name}{op_symbol}{right.name}"
 
     def read(self, for_date: date) -> pd.DataFrame:
+        if self.skip_filter:
+            self.l_reader.unset_filter()
+            self.r_reader.unset_filter()
+
         l_data = self.l_reader.read(for_date=for_date)
         r_data = self.r_reader.read(for_date=for_date)
 
+        self.l_reader.reset_filter()
+        self.r_reader.reset_filter()
+        
         on_cols = None
         prefix_l = None
         prefix_r = None
@@ -451,10 +458,11 @@ class NseDerivatiesOldReader(NseDerivatiesReaderBase):
         }
 
 
-class MultiDatesDataReader:
+class MultiDatesDataReader(DataReader):
     reader: DataReader
 
     def __init__(self, reader: DataReader):
+        super().__init__()
         self.reader = reader
 
     def read(self, datelist):
@@ -463,7 +471,11 @@ class MultiDatesDataReader:
         for for_date in datelist:
             if MarketDaysHelper.is_open_for_day(pd.Timestamp(for_date).date()):
                 try:
+                    if self.skip_filter:
+                        self.reader.unset_filter()
                     data = self.reader.read(for_date)
+                    self.reader.reset_filter()
+
                     if result is None:
                         result = data
                     else:
@@ -490,7 +502,12 @@ class DateRangeDataReader(DataReader):
         for for_date in datelist:
             if MarketDaysHelper.is_open_for_day(pd.Timestamp(for_date).date()):
                 try:
+                    if self.skip_filter:
+                        self.reader.unset_filter()
+
                     data = self.reader.read(for_date)
+                    self.reader.reset_filter()
+
                     if result is None:
                         result = data
                     else:
