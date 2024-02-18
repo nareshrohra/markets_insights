@@ -502,7 +502,8 @@ class HistoricalDataProcessor(DataProcessor):
             latest = pd.Timestamp(historical_data[BaseColumns.Date].max()).date()
             if earliest > from_date:
                 Instrumentation.info(f"Reading data from {from_date} to {earliest}")
-                read_data = dateRangeReader.unset_filter().read(from_date, earliest).reset_filter()
+                read_data = dateRangeReader.unset_filter().read(from_date, earliest)
+                dateRangeReader.reset_filter()
                 historical_data = pd.concat(
                     [historical_data, read_data], ignore_index=True
                 ).reset_index(drop=True)
@@ -510,7 +511,8 @@ class HistoricalDataProcessor(DataProcessor):
 
             if latest < to_date:
                 Instrumentation.info(f"Reading data from {latest} to {to_date}")
-                read_data = dateRangeReader.unset_filter().read(latest, to_date).reset_filter()
+                read_data = dateRangeReader.unset_filter().read(latest, to_date)
+                dateRangeReader.reset_filter()
                 historical_data = pd.concat(
                     [historical_data, read_data], ignore_index=True
                 ).reset_index(drop=True)
