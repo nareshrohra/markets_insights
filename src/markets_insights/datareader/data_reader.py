@@ -213,16 +213,9 @@ class ArithmaticOpReader(DataReader):
         self.name = f"{left.name}{op_symbol}{right.name}"
 
     def read(self, for_date: date) -> pd.DataFrame:
-        if self.skip_filter:
-            self.l_reader.unset_filter()
-            self.r_reader.unset_filter()
-
         l_data = self.l_reader.read(for_date=for_date)
         r_data = self.r_reader.read(for_date=for_date)
 
-        self.l_reader.reset_filter()
-        self.r_reader.reset_filter()
-        
         on_cols = None
         prefix_l = None
         prefix_r = None
