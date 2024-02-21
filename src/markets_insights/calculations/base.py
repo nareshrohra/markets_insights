@@ -6,10 +6,10 @@ import pandas_ta as ta
 
 class CalculationWorker:
     def __init__(self, **params):
-        self._columns: [str] = []
+        self._columns: list[str] = []
         self._params: dict = params
 
-    def get_columns(self) -> [str]:
+    def get_columns(self) -> list[str]:
         return self._columns
     
     def get_column(self) -> str:
@@ -283,8 +283,8 @@ class VwapCalculationWorker(CalculationWorker):
 
 
 class LowestPriceInNextNDaysCalculationWorker(CalculationWorker):
-    def __init__(self, N: int = 5):
-        super().__init__(N = int(N))
+    def __init__(self, N: int = 5, close_price_column: str = BaseColumns.Close, low_price_column: str = BaseColumns.Low):
+        super().__init__(N = int(N), close_price_column = close_price_column, low_price_column = low_price_column)
         self._columns.append(f"TroughInNext{str(N)}Sessions")
         self._columns.append(f"TroughPercInNext{str(N)}Sessions")
 
@@ -292,20 +292,20 @@ class LowestPriceInNextNDaysCalculationWorker(CalculationWorker):
     def add_calculated_columns(self, data):
         identifier_grouped_data = data.groupby(BaseColumns.Identifier)
         data[self._columns[0]] = identifier_grouped_data[
-            BaseColumns.Low
+            self._params['low_price_column']
         ].transform(
             lambda x: x.rolling(self._params['N']).min().shift(-self._params['N'])
         )
         data[self._columns[1]] = (
-            (data[BaseColumns.Close] - data[self._columns[0]])
-            / data[BaseColumns.Close]
+            (data[self._params['close_price_column']] - data[self._columns[0]])
+            / data[self._params['close_price_column']]
             * 100
         )
 
 
 class HighestPriceInNextNDaysCalculationWorker(CalculationWorker):
-    def __init__(self, N: int = 5):
-        super().__init__(N = int(N))
+    def __init__(self, N: int = 5, close_price_column: str = BaseColumns.Close, high_price_column: str = BaseColumns.High):
+        super().__init__(N = int(N), close_price_column = close_price_column, high_price_column = high_price_column)
         self._columns.append(f"PeakInNext{str(N)}Sessions")
         self._columns.append(f"PeakPercInNext{str(N)}Sessions")
 
@@ -313,12 +313,12 @@ class HighestPriceInNextNDaysCalculationWorker(CalculationWorker):
     def add_calculated_columns(self, data):
         identifier_grouped_data = data.groupby(BaseColumns.Identifier)
         data[self._columns[0]] = identifier_grouped_data[
-            BaseColumns.High
+            self._params['high_price_column']
         ].transform(
             lambda x: x.rolling(self._params['N']).max().shift(-self._params['N'])
         )
         data[self._columns[1]] = (
-            (data[self._columns[0]] - data[BaseColumns.Close])
-            / data[BaseColumns.Close]
+            (data[self._columns[0]] - data[self._params['close_price_column']])
+            / data[self._params['close_price_column']]
             * 100
         )
