@@ -215,59 +215,60 @@ class ArithmaticOpReader(DataReader):
     def read(self, for_date: date) -> pd.DataFrame:
         l_data = self.l_reader.read(for_date=for_date)
         r_data = self.r_reader.read(for_date=for_date)
+        if not (l_data.empty or r_data.empty):
+            on_cols = [BaseColumns.Identifier, BaseColumns.Date]
+            prefix_l = self.l_reader.col_prefix
+            prefix_r = self.r_reader.col_prefix
 
-        on_cols = [BaseColumns.Identifier, BaseColumns.Date]
-        prefix_l = self.l_reader.col_prefix
-        prefix_r = self.r_reader.col_prefix
+            l_data_unique_id_count = len(l_data[BaseColumns.Identifier].unique())
+            r_data_unique_id_count = len(r_data[BaseColumns.Identifier].unique())
+            
+            if l_data_unique_id_count == 1:
+                on_cols = [BaseColumns.Date]
+                prefix_l = l_data[BaseColumns.Identifier].values[0] + "-"
+            
+            if r_data_unique_id_count == 1:
+                on_cols = [BaseColumns.Date]
+                prefix_r = r_data[BaseColumns.Identifier].values[0] + "-"
+            
+            if not (
+                f"{prefix_l}{BaseColumns.Close}" in l_data.columns
+                and f"{prefix_r}{BaseColumns.Close}" in l_data.columns
+            ):
+                merged_df = pd.merge(
+                    l_data,
+                    r_data,
+                    how="inner",
+                    on=on_cols,
+                    left_index=False,
+                    right_index=False,
+                )
 
-        l_data_unique_id_count = len(l_data[BaseColumns.Identifier].unique())
-        r_data_unique_id_count = len(r_data[BaseColumns.Identifier].unique())
-        
-        if l_data_unique_id_count == 1:
-            on_cols = [BaseColumns.Date]
-            prefix_l = l_data[BaseColumns.Identifier].values[0] + "-"
-        
-        if r_data_unique_id_count == 1:
-            on_cols = [BaseColumns.Date]
-            prefix_r = r_data[BaseColumns.Identifier].values[0] + "-"
-        
-        if not (
-            f"{prefix_l}{BaseColumns.Close}" in l_data.columns
-            and f"{prefix_r}{BaseColumns.Close}" in l_data.columns
-        ):
-            merged_df = pd.merge(
-                l_data,
-                r_data,
-                how="inner",
-                on=on_cols,
-                left_index=False,
-                right_index=False,
-            )
+                if BaseColumns.Identifier not in on_cols:
+                    merged_df[BaseColumns.Identifier] = merged_df[BaseColumns.Identifier + "_x"] + " " + self.op_symbol + " " + merged_df[BaseColumns.Identifier + "_y"]
 
-            if BaseColumns.Identifier not in on_cols:
-                merged_df[BaseColumns.Identifier] = merged_df[BaseColumns.Identifier + "_x"] + " " + self.op_symbol + " " + merged_df[BaseColumns.Identifier + "_y"]
+                update_col_prefix = {}
+                for col in [col for col in merged_df.columns if "_x" in col]:
+                    update_col_prefix[col] = f"{prefix_l}{col.replace('_x', '')}"
+                for col in [col for col in merged_df.columns if "_y" in col]:
+                    update_col_prefix[col] = f"{prefix_r}{col.replace('_y', '')}"
 
-            update_col_prefix = {}
-            for col in [col for col in merged_df.columns if "_x" in col]:
-                update_col_prefix[col] = f"{prefix_l}{col.replace('_x', '')}"
-            for col in [col for col in merged_df.columns if "_y" in col]:
-                update_col_prefix[col] = f"{prefix_r}{col.replace('_y', '')}"
+                merged_df.rename(columns=update_col_prefix, inplace=True)
+            else:
+                merged_df = l_data
 
-            merged_df.rename(columns=update_col_prefix, inplace=True)
+            for col in TypeHelper.get_class_static_values(BasePriceColumns):
+                Instrumentation.info(f"{prefix_l}{col} {self.op_symbol} {prefix_r}{col}")
+                merged_df[col] = self.operator(
+                    merged_df[f"{prefix_l}{col}"], merged_df[f"{prefix_r}{col}"]
+                )
+
+            self.l_prefix = prefix_l
+            self.r_prefix = prefix_r
+
+            return merged_df
         else:
-            merged_df = l_data
-
-        for col in TypeHelper.get_class_static_values(BasePriceColumns):
-            Instrumentation.info(f"{prefix_l}{col} {self.op_symbol} {prefix_r}{col}")
-            merged_df[col] = self.operator(
-                merged_df[f"{prefix_l}{col}"], merged_df[f"{prefix_r}{col}"]
-            )
-
-        self.l_prefix = prefix_l
-        self.r_prefix = prefix_r
-
-        return merged_df
-
+            return pd.DataFrame()
 
 class BhavCopyReader(DataReader):
     def __init__(self):
@@ -462,9 +463,10 @@ class MultiDatesDataReader(DataReader):
                     if result is None:
                         result = data
                     else:
-                        result = pd.concat(
-                            [result, data], ignore_index=True
-                        ).reset_index(drop=True)
+                        if not data.empty:
+                            result = pd.concat(
+                                [result, data], ignore_index=True
+                            ).reset_index(drop=True)
                 except Exception as e:
                     print(e, for_date.strftime("date(%Y, %m, %d),"))
 
@@ -494,9 +496,10 @@ class DateRangeDataReader(DataReader):
                     if result is None:
                         result = data
                     else:
-                        result = pd.concat(
-                            [result, data], ignore_index=True
-                        ).reset_index(drop=True)
+                        if not data.empty:
+                            result = pd.concat(
+                                [result, data], ignore_index=True
+                            ).reset_index(drop=True)
                 except Exception as e:
                     print(e, for_date.strftime("date(%Y, %m, %d),"))
 
