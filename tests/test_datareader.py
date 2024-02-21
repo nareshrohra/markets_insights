@@ -114,20 +114,20 @@ def test_arithmatic_op(operation, close):
 
 
 @pytest.mark.parametrize(
-    "operation,close",
+    "operation,symbol,close",
     [
-        (lambda x, y: x + y, 20280.280000000002),
-        (lambda x, y: x - y, 20255.52),
-        (lambda x, y: x / y, 1637.1486268174476),
-        (lambda x, y: x * y, 250916.60200000004),
+        (lambda x, y: x + y, "+", 20280.280000000002),
+        (lambda x, y: x - y, "-", 20255.52),
+        (lambda x, y: x / y, "/", 1637.1486268174476),
+        (lambda x, y: x * y, "*", 250916.60200000004),
     ],
 )
-def test_arithmatic_op_single_id_right(operation, close):
+def test_arithmatic_op_single_id_right(operation, symbol, close):
     indices_reader = NseIndicesReader()
     vix_reader = NseIndicesReader().set_filter(IdentifierFilter("India VIX"))
     op_reader = operation(indices_reader, vix_reader)
     data = op_reader.read(for_date=PresetDates.dec_start).query(
-        str(IdentifierFilter("Nifty 50"))
+        str(IdentifierFilter(f"Nifty 50 {symbol} India VIX"))
     )
 
     check_col_values(data, col_value_pairs={BaseColumns.Close: close})
@@ -140,25 +140,25 @@ def test_arithmatic_op_single_id_right(operation, close):
 
 
 @pytest.mark.parametrize(
-    "operation,close",
+    "operation,symbol,close",
     [
-        (lambda x, y: x + y, 20280.280000000002),
-        (lambda x, y: x - y, -20255.52),
-        (lambda x, y: x / y, 0.0006108180916621851),
-        (lambda x, y: x * y, 250916.60200000004),
+        (lambda x, y: x + y, "+", 20280.280000000002),
+        (lambda x, y: x - y, "-", -20255.52),
+        (lambda x, y: x / y, "/", 0.0006108180916621851),
+        (lambda x, y: x * y, "*", 250916.60200000004),
     ],
 )
-def test_arithmatic_op_single_id_left(operation, close):
+def test_arithmatic_op_single_id_left(operation, symbol, close):
     indices_reader = NseIndicesReader()
     vix_reader = NseIndicesReader().set_filter(IdentifierFilter("India VIX"))
     op_reader: DataReader = operation(vix_reader, indices_reader)
     data = op_reader.read(for_date=PresetDates.dec_start).query(
-        str(IdentifierFilter("Nifty 50"))
+        str(IdentifierFilter(f"India VIX {symbol} Nifty 50"))
     )
 
     check_col_values(
         data,
-        col_value_pairs={BaseColumns.Identifier: "Nifty 50", BaseColumns.Close: close},
+        col_value_pairs={BaseColumns.Close: close},
     )
 
     assert op_reader.l_prefix == "India VIX-"
@@ -169,15 +169,15 @@ def test_arithmatic_op_single_id_left(operation, close):
 
 
 @pytest.mark.parametrize(
-    "operation,close",
+    "operation,symbol,close",
     [
-        (lambda x, y: x + y, 20280.280000000002),
-        (lambda x, y: x - y, 20255.52),
-        (lambda x, y: x / y, 1637.1486268174476),
-        (lambda x, y: x * y, 250916.60200000004),
+        (lambda x, y: x + y, "+", 20280.280000000002),
+        (lambda x, y: x - y, "-", 20255.52),
+        (lambda x, y: x / y, "/", 1637.1486268174476),
+        (lambda x, y: x * y, "*", 250916.60200000004),
     ],
 )
-def test_arithmatic_op_single_id_both(operation, close):
+def test_arithmatic_op_single_id_both(operation, symbol, close):
     indices_reader = NseIndicesReader().set_filter(IdentifierFilter("Nifty 50"))
     vix_reader = NseIndicesReader().set_filter(IdentifierFilter("India VIX"))
     op_reader: DataReader = operation(indices_reader, vix_reader)
@@ -185,13 +185,13 @@ def test_arithmatic_op_single_id_both(operation, close):
 
     check_col_values(
         data,
-        col_value_pairs={BaseColumns.Identifier: "Nifty 50", BaseColumns.Close: close},
+        col_value_pairs={BaseColumns.Identifier: f"Nifty 50 {symbol} India VIX", BaseColumns.Close: close},
     )
 
-    assert op_reader.l_prefix == "Index-"
+    assert op_reader.l_prefix == "Nifty 50-"
     assert op_reader.r_prefix == "India VIX-"
 
-    assert f"{indices_reader.col_prefix}{BaseColumns.Close}" in data.columns
+    assert f"Nifty 50-{BaseColumns.Close}" in data.columns
     assert f"India VIX-{BaseColumns.Close}" in data.columns
 
 

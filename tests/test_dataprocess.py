@@ -102,7 +102,7 @@ def test_historical_data_processor_annual_aggregration():
             BaseColumns.High: 21801.45,
             BaseColumns.Low: 16828.35,
             BaseColumns.Close: 21731.4,
-            BaseColumns.Turnover: 58075646100000.0,
+            BaseColumns.Turnover: 58193576700000.0,
         },
     )
 

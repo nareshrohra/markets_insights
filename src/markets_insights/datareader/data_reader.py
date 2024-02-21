@@ -191,12 +191,12 @@ class DataReader:
 
     def __mul__(self, other):
         return ArithmaticOpReader(
-            left=self, right=other, operator=lambda x, y: x * y, op_symbol="x"
+            left=self, right=other, operator=lambda x, y: x * y, op_symbol="*"
         )
 
     def __truediv__(self, other):
         return ArithmaticOpReader(
-            left=self, right=other, operator=lambda x, y: x / y, op_symbol=" div "
+            left=self, right=other, operator=lambda x, y: x / y, op_symbol="/"
         )
 
 
@@ -216,27 +216,21 @@ class ArithmaticOpReader(DataReader):
         l_data = self.l_reader.read(for_date=for_date)
         r_data = self.r_reader.read(for_date=for_date)
 
-        on_cols = None
-        prefix_l = None
-        prefix_r = None
+        on_cols = [BaseColumns.Identifier, BaseColumns.Date]
+        prefix_l = self.l_reader.col_prefix
+        prefix_r = self.r_reader.col_prefix
 
-        rename_id_col_with_suffix = None
-        if len(r_data[BaseColumns.Identifier].unique()) == 1:
+        l_data_unique_id_count = len(l_data[BaseColumns.Identifier].unique())
+        r_data_unique_id_count = len(r_data[BaseColumns.Identifier].unique())
+        
+        if l_data_unique_id_count == 1:
             on_cols = [BaseColumns.Date]
-            rename_id_col_with_suffix = "_x"
-            prefix_l = self.l_reader.col_prefix
-            prefix_r = r_data[BaseColumns.Identifier].values[0] + "-"
-        elif len(l_data[BaseColumns.Identifier].unique()) == 1:
-            on_cols = [BaseColumns.Date]
-            rename_id_col_with_suffix = "_y"
             prefix_l = l_data[BaseColumns.Identifier].values[0] + "-"
-            prefix_r = self.r_reader.col_prefix
-        else:
-            on_cols = [BaseColumns.Identifier, BaseColumns.Date]
-            rename_id_col_with_suffix = None
-            prefix_l = self.l_reader.col_prefix
-            prefix_r = self.r_reader.col_prefix
-
+        
+        if r_data_unique_id_count == 1:
+            on_cols = [BaseColumns.Date]
+            prefix_r = r_data[BaseColumns.Identifier].values[0] + "-"
+        
         if not (
             f"{prefix_l}{BaseColumns.Close}" in l_data.columns
             and f"{prefix_r}{BaseColumns.Close}" in l_data.columns
@@ -249,13 +243,9 @@ class ArithmaticOpReader(DataReader):
                 left_index=False,
                 right_index=False,
             )
-            if rename_id_col_with_suffix:
-                merged_df.rename(
-                    columns={
-                        f"{BaseColumns.Identifier}{rename_id_col_with_suffix}": BaseColumns.Identifier
-                    },
-                    inplace=True,
-                )
+
+            if BaseColumns.Identifier not in on_cols:
+                merged_df[BaseColumns.Identifier] = merged_df[BaseColumns.Identifier + "_x"] + " " + self.op_symbol + " " + merged_df[BaseColumns.Identifier + "_y"]
 
             update_col_prefix = {}
             for col in [col for col in merged_df.columns if "_x" in col]:
