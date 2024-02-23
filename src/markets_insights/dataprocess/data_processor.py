@@ -13,6 +13,7 @@ from markets_insights.core.column_definition import (
 from markets_insights.core.core import MarketDaysHelper, Instrumentation, TypeHelper
 from markets_insights.core.column_definition import BaseColumns
 from markets_insights.calculations.base import (
+    CalculationWindow,
     HighestPriceInNextNDaysCalculationWorker,
     LowestPriceInNextNDaysCalculationWorker,
 )
@@ -23,10 +24,10 @@ from markets_insights.calculations.base import (
     RsiCalculationWorker,
     BollingerBandCalculationWorker,
     StochRsiCalculationWorker,
-    ValueCrossedAboveFlagWorker,
-    ValueCrossedBelowFlagWorker,
-    PriceCrossedAboveValueFlagWorker,
-    PriceCrossedBelowValueFlagWorker,
+    ColumnValueCrossedAboveFlagWorker,
+    ColumnValueCrossedBelowFlagWorker,
+    PriceCrossedAboveColumnValueFlagWorker,
+    PriceCrossedBelowColumnValueFlagWorker,
     StdDevCalculationWorker,
 )
 
@@ -104,10 +105,10 @@ class CalculationPipelineBuilder:
                 worker = BollingerBandCalculationWorker(window, deviation)
                 pipeline.add_calculation_worker(worker)
                 pipeline.add_calculation_worker(
-                    PriceCrossedBelowValueFlagWorker(worker.get_columns()[0])
+                    PriceCrossedBelowColumnValueFlagWorker(worker.get_columns()[0])
                 )
                 pipeline.add_calculation_worker(
-                    PriceCrossedAboveValueFlagWorker(worker.get_columns()[1])
+                    PriceCrossedAboveColumnValueFlagWorker(worker.get_columns()[1])
                 )
         return pipeline
 
@@ -117,10 +118,10 @@ class CalculationPipelineBuilder:
             worker = SmaCalculationWorker(window)
             pipeline.add_calculation_worker(worker)
             pipeline.add_calculation_worker(
-                PriceCrossedBelowValueFlagWorker(worker.get_column())
+                PriceCrossedBelowColumnValueFlagWorker(worker.get_column())
             )
             pipeline.add_calculation_worker(
-                PriceCrossedAboveValueFlagWorker(worker.get_column())
+                PriceCrossedAboveColumnValueFlagWorker(worker.get_column())
             )
         return pipeline
 
@@ -131,13 +132,13 @@ class CalculationPipelineBuilder:
         pipeline.add_calculation_worker(RsiCalculationWorker(window))
         if crossing_above_flag_value is not None:
             pipeline.add_calculation_worker(
-                ValueCrossedAboveFlagWorker(
+                ColumnValueCrossedAboveFlagWorker(
                     CalculatedColumns.RelativeStrengthIndex, crossing_above_flag_value
                 )
             )
         if crossing_below_flag_value is not None:
             pipeline.add_calculation_worker(
-                ValueCrossedBelowFlagWorker(
+                ColumnValueCrossedBelowFlagWorker(
                     CalculatedColumns.RelativeStrengthIndex, crossing_below_flag_value
                 )
             )
@@ -150,23 +151,23 @@ class CalculationPipelineBuilder:
         pipeline.add_calculation_worker(StochRsiCalculationWorker(window))
         if crossing_above_flag_value is not None:
             pipeline.add_calculation_worker(
-                ValueCrossedAboveFlagWorker(
+                ColumnValueCrossedAboveFlagWorker(
                     CalculatedColumns.StochRsi_K, crossing_above_flag_value
                 )
             )
             pipeline.add_calculation_worker(
-                ValueCrossedAboveFlagWorker(
+                ColumnValueCrossedAboveFlagWorker(
                     CalculatedColumns.StochRsi_D, crossing_above_flag_value
                 )
             )
         if crossing_below_flag_value is not None:
             pipeline.add_calculation_worker(
-                ValueCrossedBelowFlagWorker(
+                ColumnValueCrossedBelowFlagWorker(
                     CalculatedColumns.StochRsi_K, crossing_below_flag_value
                 )
             )
             pipeline.add_calculation_worker(
-                ValueCrossedBelowFlagWorker(
+                ColumnValueCrossedBelowFlagWorker(
                     CalculatedColumns.StochRsi_D, crossing_below_flag_value
                 )
             )
@@ -206,6 +207,8 @@ class MultiDataCalculationPipelines:
                 data = result
         return data
 
+    def get_calculation_window(self) -> CalculationWindow:
+        return CalculationWindow.load_from_list([self._store[key].get_calculation_window() for key in self._store])
 
 class HistoricalDataset:
     _daily: pd.DataFrame = None

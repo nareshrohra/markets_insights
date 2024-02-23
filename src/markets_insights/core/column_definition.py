@@ -34,6 +34,8 @@ class CalculatedColumnsBase:
 
 
 class CalculatedColumns(CalculatedColumnsBase):
+    TypicalPrice = 'TypicalPrice'
+    TypicalVolumePrice = 'TypicalVolumePrice'
     Change = "Change"
     IsInDerivatives = "IsInDerivatives"
     ClosePriceDiff = "ClosePriceDiff"

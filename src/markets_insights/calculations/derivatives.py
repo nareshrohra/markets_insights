@@ -1,3 +1,4 @@
+from markets_insights.calculations.base import CalculationWindow
 from markets_insights.core.column_definition import (
     DerivativesBaseColumns,
     DerivativesCalculatedColumns,
@@ -11,14 +12,7 @@ class DerivativesPriceCalculationWorker(CalculationWorker):
     @Instrumentation.trace(name="DerivativesPriceCalculationWorker")
     def add_calculated_columns(self, data):
         if DerivativesBaseColumns.PreviousClose not in data.columns.to_list():
-            data[DerivativesBaseColumns.PreviousClose] = data.groupby(
-                [
-                    DerivativesBaseColumns.Identifier,
-                    DerivativesBaseColumns.OptionType,
-                    DerivativesBaseColumns.ExpiryDate,
-                    DerivativesBaseColumns.StrikePrice,
-                ]
-            )[DerivativesBaseColumns.Close].transform(lambda x: x.shift(1))
+            data[DerivativesBaseColumns.PreviousClose] = data.groupby(self.get_group_cols(data.columns))[DerivativesBaseColumns.Close].transform(lambda x: x.shift(1))
 
         data[DerivativesCalculatedColumns.CloseToPrevCloseChangePerc] = (
             data[DerivativesBaseColumns.Close]
@@ -61,13 +55,16 @@ class DerivativesPriceCalculationWorker(CalculationWorker):
             - data[DerivativesCalculatedColumns.PreviousCloseAmount]
         )
 
+    def get_calculation_window(self) -> CalculationWindow:
+        return CalculationWindow(trailing=1, leading=0)
+
 
 class DerivativesLotSizeCalculationWorker(CalculationWorker):
     @Instrumentation.trace(name="DerivativesLotSizeCalculationWorker")
     def add_calculated_columns(self, data):
-        data[DerivativesCalculatedColumns.LotSize] = data.groupby(
-            [DerivativesBaseColumns.Identifier, DerivativesBaseColumns.ExpiryDate]
-        )[DerivativesBaseColumns.OpenInterest].transform(lambda x: x.min())
+        data[DerivativesCalculatedColumns.LotSize] = \
+            data.groupby([DerivativesBaseColumns.Identifier, DerivativesBaseColumns.ExpiryDate]) \
+            [DerivativesBaseColumns.OpenInterest].transform(lambda x: x.min())
 
 
 class DerivativesLotSizeCalculationWorker_Obsolete(CalculationWorker):

@@ -22,6 +22,8 @@ import markets_insights
 from markets_insights.datareader.data_reader import (
     DataReader,
     BhavCopyReader,
+    NseEquityFuturesDataReader,
+    NseIndexFuturesDataReader,
     NseIndicesReader,
     NseDerivatiesReader,
     MultiDatesDataReader,
@@ -35,6 +37,8 @@ from markets_insights.datareader.data_reader import (
         (BhavCopyReader(), 1797),
         (NseIndicesReader(), 107),
         (NseDerivatiesReader(), 12450),
+        (NseEquityFuturesDataReader(), 503),
+        (NseIndexFuturesDataReader(), 12)
     ],
 )
 def test_single_day_reader(reader: DataReader, rows: int):
@@ -44,7 +48,7 @@ def test_single_day_reader(reader: DataReader, rows: int):
 
 
 @pytest.mark.parametrize(
-    "reader", [BhavCopyReader(), NseIndicesReader(), NseDerivatiesReader()]
+    "reader", [BhavCopyReader(), NseIndicesReader(), NseDerivatiesReader(), NseEquityFuturesDataReader(), NseIndexFuturesDataReader()]
 )
 def test_recent_day_read(reader: DataReader):
     data = reader.read(PresetDates.recent_day)
@@ -52,8 +56,11 @@ def test_recent_day_read(reader: DataReader):
     assert data.shape[0] > 1
 
 
-def test_derivatives_data_reader_columns():
-    data = NseDerivatiesReader().read(PresetDates.dec_start)
+@pytest.mark.parametrize(
+    "reader", [NseDerivatiesReader(), NseEquityFuturesDataReader(), NseIndexFuturesDataReader()]
+)
+def test_derivatives_data_reader_columns(reader: DataReader):
+    data = reader.read(PresetDates.dec_start)
     check_cols_present(
         data,
         [

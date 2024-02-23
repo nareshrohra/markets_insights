@@ -293,3 +293,25 @@ class DatePartsFilter(FilterBase):
                     condition_value=year,
                 )
             )
+
+
+class ExpiryDateFilter(FilterBase):
+    def __init__(self, date: str):
+        super().__init__()
+        self.add_criteria(
+            FilterCriteria(
+                col_to_filter=DerivativesBaseColumns.ExpiryDate,
+                condition="==",
+                condition_value=f"'{date}'",
+            )
+        )
+
+
+class FlagFilter(FilterBase):
+    def __init__(self, flag_column_name: str):
+        super().__init__()
+        self.add_criteria(
+            FilterCriteria(
+                col_to_filter=flag_column_name, condition="==", condition_value=True,
+            )
+        )

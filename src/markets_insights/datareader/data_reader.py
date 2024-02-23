@@ -17,6 +17,7 @@ from datetime import date
 
 from markets_insights.core.core import (
     FilterBase,
+    InstrumentTypeFilter,
     MarketDaysHelper,
     Instrumentation,
     TypeHelper,
@@ -51,7 +52,7 @@ class DataReader:
         self.filter = filter
         return self
 
-    def get_date_parts(self, for_date):
+    def get_date_parts(self, for_date: date):
         return {
             "year": str(for_date.year),
             "month": for_date.strftime("%B").upper()[:3],
@@ -77,7 +78,7 @@ class DataReader:
 
         return merged_df
 
-    def read(self, for_date) -> pd.DataFrame:
+    def read(self, for_date: date) -> pd.DataFrame:
         return self.read_data(for_date)
     
     def unset_filter(self):
@@ -88,7 +89,7 @@ class DataReader:
         self.skip_filter = False
         return self
 
-    def read_data(self, for_date) -> pd.DataFrame:
+    def read_data(self, for_date: date) -> pd.DataFrame:
         date_parts = self.get_date_parts(for_date)
         filenames = self.get_filenames(for_date)
         output_file_path = self.options.output_path_template.substitute(
@@ -397,6 +398,37 @@ class NseDerivatiesReader(NseDerivatiesReaderBase):
         }
 
 
+class NseEquityFuturesDataReader(NseDerivatiesReader):
+    def __init__(self):
+        super().__init__()
+        self.name = "nse_futstk"
+        self.col_prefix = "Futures-"
+    
+
+    def read(self, for_date: date) -> pd.DataFrame:
+        data: pd.DataFrame = super().read_data(for_date)
+        return data.query(str(InstrumentTypeFilter("FUTSTK")))
+
+
+class NseIndexFuturesDataReader(NseDerivatiesReader):
+    def __init__(self):
+        super().__init__()
+        self.name = "nse_futidx"
+        self.col_prefix = "Futures-"
+
+    def read(self, for_date: date) -> pd.DataFrame:
+        data: pd.DataFrame = super().read_data(for_date)
+        return data.query(str(InstrumentTypeFilter("FUTIDX")))
+    
+    def sanitize_data(self, data: pd.DataFrame):
+        mapping = {
+            "NIFTY": "Nifty 50",
+            "BANKNIFTY": "Nifty Bank",
+            "FINNIFTY": "Nifty Financial Services",
+        }
+        data[BaseColumns.Identifier] = data[BaseColumns.Identifier].replace(mapping)
+        return data
+    
 class NseDerivatiesOldReader(NseDerivatiesReaderBase):
     def __init__(self):
         super().__init__()

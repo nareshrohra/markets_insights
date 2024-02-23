@@ -1,13 +1,49 @@
 from markets_insights.core.core import Instrumentation
-from markets_insights.core.column_definition import BaseColumns, CalculatedColumns
+from markets_insights.core.column_definition import BaseColumns, CalculatedColumns, DerivativesBaseColumns
 import pandas as pd
 import pandas_ta as ta
 
+class CalculationWindow:
+    def __init__(self, trailing: int = 0, leading: int = 0, ):
+        self.trailing = trailing
+        self.leading = leading
+
+    def load_from_list(windows: list):
+        max_leading: int = 0
+        max_trailing: int = 0
+
+        for window in windows:
+            max_leading = max(max_leading, window.leading)
+            max_trailing = max(max_trailing, window.trailing)
+        
+        return CalculationWindow(max_trailing, max_leading)
 
 class CalculationWorker:
     def __init__(self, **params):
         self._columns: list[str] = []
         self._params: dict = params
+
+    def get_calculation_window(self) -> CalculationWindow:
+        max_leading = 0
+        max_trailing = 0
+        for window in [window for window in ['time_window', 'N'] if window in self._params]:
+            window_val = int(self._params[window])
+            max_trailing = max(max_trailing, window_val)  # Assuming negative values should set max_trailing
+
+        return CalculationWindow(max_trailing, max_leading)
+
+    def get_group_cols(self, columns: list[str]) -> list[str]:
+        group_columns: list[str] = [DerivativesBaseColumns.Identifier]
+                
+        group_columns.extend(group_col for group_col in 
+                [
+                    DerivativesBaseColumns.OptionType,
+                    DerivativesBaseColumns.ExpiryDate,
+                    DerivativesBaseColumns.StrikePrice,
+                ] if group_col in columns
+            )
+
+        return group_columns
 
     def get_columns(self) -> list[str]:
         return self._columns
@@ -23,9 +59,9 @@ class CalculationWorker:
 
 
 class CalculationPipeline:
-    _pipeline: list
+    _pipeline: list[CalculationWorker]
 
-    def __init__(self, workers=None):
+    def __init__(self, workers: list[CalculationWorker]=None):
         if workers is not None:
             self._pipeline = workers
         else:
@@ -34,63 +70,166 @@ class CalculationPipeline:
     def add_calculation_worker(self, worker: CalculationWorker):
         self._pipeline.append(worker)
 
-    def run(self, data):
+    def run(self, data: pd.DataFrame):
         for worker in self._pipeline:
             result = worker.add_calculated_columns(data)
             if result is not None:
                 data = result
         return data
+    
+    def get_calculation_window(self) -> CalculationWindow:
+        return CalculationWindow.load_from_list([worker.get_calculation_window() for worker in self._pipeline])
 
 
-class ValueCrossedAboveFlagWorker(CalculationWorker):
+class ColumnValueCrossedAboveFlagWorker(CalculationWorker):
     def __init__(self, value_column: str = None, value: int = 0):
         super().__init__(value_column = value_column, value = int(value))
         self._columns.append(f"{value_column}CrossedAbove")
 
-    @Instrumentation.trace(name="ValueCrossedAboveFlagWorker")
+    @Instrumentation.trace(name="ColumnValueCrossedAboveFlagWorker")
     def add_calculated_columns(self, data: pd.DataFrame):
-        identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+        identifier_grouped_data = data.groupby(self.get_group_cols(data.columns))
         data[self._columns[0]] = identifier_grouped_data[self._params['value_column']].transform(
             lambda x: (x.shift(1) < self._params['value']) & (x >= self._params['value'])
         )
+    
+    def get_calculation_window(self) -> CalculationWindow:
+        return CalculationWindow(trailing=1, leading=0)
 
 
-class ValueCrossedBelowFlagWorker(CalculationWorker):
+class ColumnValueCrossedBelowFlagWorker(CalculationWorker):
     def __init__(self, value_column: str = None, value: int = 0):
         super().__init__(value_column = value_column, value = int(value))
         self._columns.append(f"{value_column}CrossedBelow")
 
-    @Instrumentation.trace(name="ValueCrossedBelowFlagWorker")
+    @Instrumentation.trace(name="ColumnValueCrossedBelowFlagWorker")
     def add_calculated_columns(self, data: pd.DataFrame):
-        identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+        identifier_grouped_data = data.groupby(self.get_group_cols(data.columns))
         data[self._columns[0]] = identifier_grouped_data[self._params['value_column']].transform(
             lambda x: (x.shift(-1) > self._params['value']) & (x <= self._params['value'])
         )
 
+    def get_calculation_window(self) -> CalculationWindow:
+        return CalculationWindow(trailing=1, leading=0)
+    
 
-class PriceCrossedAboveValueFlagWorker(CalculationWorker):
+class PriceCrossedAboveColumnValueFlagWorker(CalculationWorker):
     def __init__(self, value_column: str = None):
         super().__init__(value_column = value_column)
         self._columns.append(f"PriceCrossedAbove{value_column}")
 
-    @Instrumentation.trace(name="PriceCrossedAboveValueFlagWorker")
+    @Instrumentation.trace(name="PriceCrossedAboveColumnValueFlagWorker")
     def add_calculated_columns(self, data):
         data[self._columns[0]] = (
             data[BaseColumns.Close] >= data[self._params['value_column']]
         ) & (data[BaseColumns.PreviousClose] < data[self._params['value_column']])
 
 
-class PriceCrossedBelowValueFlagWorker(CalculationWorker):
+class PriceCrossedBelowColumnValueFlagWorker(CalculationWorker):
     def __init__(self, value_column: str = None):
         super().__init__(value_column = value_column)
         self._columns.append(f"PriceCrossedBelow{value_column}")
 
-    @Instrumentation.trace(name="PriceCrossedBelowValueFlagWorker")
+    @Instrumentation.trace(name="PriceCrossedBelowColumnValueFlagWorker")
     def add_calculated_columns(self, data: pd.DataFrame):
         data[self._columns[0]] = (
             data[BaseColumns.Close] < data[self._params['value_column']]
         ) & (data[BaseColumns.PreviousClose] >= data[self._params['value_column']])
 
+
+class ColumnValueCrossedAboveAnotherColumnValueFlagWorker(CalculationWorker):
+    def __init__(self, value_column_a: str = None, value_column_b: str = None):
+        super().__init__(value_column_a=value_column_a, value_column_b=value_column_b)
+        self._columns.append(f"{value_column_a}CrossedAbove{value_column_b}")
+
+    @Instrumentation.trace(name="ColumnValueCrossedAboveAnotherColumnValueFlagWorker")
+    def add_calculated_columns(self, data: pd.DataFrame):
+        identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+        column_a = self._params["value_column_a"]
+        column_b = self._params["value_column_b"]
+        if len(data[BaseColumns.Identifier].unique()) > 1:
+            data[self._columns[0]] = identifier_grouped_data.apply(
+                lambda x: (x.shift(1)[column_a] < x.shift(1)[column_b])
+                & (x[column_a] >= x[column_b])
+            ).reset_index(level=0, drop=True)
+        else:
+            data[self._columns[0]] = (data.shift(1)[column_a] < data.shift(1)[column_b]) \
+                & (data[column_a] >= data[column_b])
+    
+    def get_calculation_window(self) -> CalculationWindow:
+        return CalculationWindow(trailing=1, leading=0)
+    
+
+class ColumnValueCrossedBelowAnotherColumnValueFlagWorker(CalculationWorker):
+    def __init__(self, value_column_a: str = None, value_column_b: str = None):
+        super().__init__(value_column_a=value_column_a, value_column_b=value_column_b)
+        self._columns.append(f"{value_column_a}CrossedBelow{value_column_b}")
+
+    @Instrumentation.trace(name="ColumnValueCrossedBelowAnotherColumnValueFlagWorker")
+    def add_calculated_columns(self, data: pd.DataFrame):
+        identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+        column_a = self._params["value_column_a"]
+        column_b = self._params["value_column_b"]
+        if len(data[BaseColumns.Identifier].unique()) > 1:
+            data[self._columns[0]] = identifier_grouped_data.apply(
+                lambda x: (x.shift(-1)[column_a] > x.shift(-1)[column_b])
+                & (x[column_a] <= x[column_b])
+            ).reset_index(level=0, drop=True)
+        else:
+            data[self._columns[0]] = (data.shift(-1)[column_a] > data.shift(-1)[column_b]) \
+                & (data[column_a] <= data[column_b])
+
+    def get_calculation_window(self) -> CalculationWindow:
+        return CalculationWindow(trailing=1, leading=0)
+    
+
+class ColumnValueBelowFlagWorker(CalculationWorker):
+    def __init__(self, value_column: str = None, value: int = 0):
+        super().__init__(value_column=value_column, value=int(value))
+        self._columns.append(f"{value_column}Below{str(value)}")
+
+    @Instrumentation.trace(name="ColumnValueBelowFlagWorker")
+    def add_calculated_columns(self, data: pd.DataFrame):
+        data[self._columns[0]] = (
+            data[self._params["value_column"]] < self._params["value"]
+        )
+
+
+class ColumnValueAboveFlagWorker(CalculationWorker):
+    def __init__(self, value_column: str = None, value: int = 0):
+        super().__init__(value_column=value_column, value=int(value))
+        self._columns.append(f"{value_column}Above{str(value)}")
+
+    @Instrumentation.trace(name="ColumnValueAboveFlagWorker")
+    def add_calculated_columns(self, data: pd.DataFrame):
+        data[self._columns[0]] = (
+            data[self._params["value_column"]] > self._params["value"]
+        )
+
+
+
+class ColumnValueBelowAnotherColumnValueFlagWorker(CalculationWorker):
+    def __init__(self, value_column_a: str = None, value_column_b: str = None):
+        super().__init__(value_column_a=value_column_a, value_column_b=value_column_b)
+        self._columns.append(f"{value_column_a}Below{value_column_b}")
+
+    @Instrumentation.trace(name="ColumnValueBelowAnotherColumnValueFlagWorker")
+    def add_calculated_columns(self, data: pd.DataFrame):
+        data[self._columns[0]] = (
+            data[self._params["value_column_a"]] < data[self._params["value_column_b"]]
+        )
+
+
+class ColumnValueAboveAnotherColumnValueFlagWorker(CalculationWorker):
+    def __init__(self, value_column_a: str = None, value_column_b: str = None):
+        super().__init__(value_column_a=value_column_a, value_column_b=value_column_b)
+        self._columns.append(f"{value_column_a}Above{value_column_b}")
+
+    @Instrumentation.trace(name="ColumnValueAboveAnotherColumnValueFlagWorker")
+    def add_calculated_columns(self, data: pd.DataFrame):
+        data[self._columns[0]] = (
+            data[self._params["value_column_a"]] > data[self._params["value_column_b"]]
+        )
 
 class DatePartsCalculationWorker(CalculationWorker):
     def __init__(self):
@@ -115,7 +254,7 @@ class SmaCalculationWorker(CalculationWorker):
 
     @Instrumentation.trace(name="SmaCalculationWorker")
     def add_calculated_columns(self, data: pd.DataFrame):
-        identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+        identifier_grouped_data = data.groupby(self.get_group_cols(data.columns))
         data[self._columns[0]] = identifier_grouped_data[BaseColumns.Close].transform(
             lambda x: x.rolling(self._params['time_window']).mean()
         )
@@ -128,7 +267,7 @@ class StdDevCalculationWorker(CalculationWorker):
 
     @Instrumentation.trace(name="StdDevCalculationWorker")
     def add_calculated_columns(self, data: pd.DataFrame):
-        identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+        identifier_grouped_data = data.groupby(self.get_group_cols(data.columns))
         data[self._columns[0]] = identifier_grouped_data[BaseColumns.Close].transform(
             lambda x: x.rolling(self._params['time_window']).std()
         )
@@ -142,11 +281,20 @@ class BollingerBandCalculationWorker(CalculationWorker):
 
     @Instrumentation.trace(name="BollingerBandCalculationWorker")
     def add_calculated_columns(self, data: pd.DataFrame):
-        data[self._columns[0]] = data[f"Sma{str(self._params['time_window'])}"] - (
-            data[f"StdDev{str(self._params['time_window'])}"] * self._params['deviation']
+        sma_column = f"Sma{str(self._params['time_window'])}"
+        std_dev_column = f"StdDev{str(self._params['time_window'])}"
+
+        if sma_column in data.columns:
+            SmaCalculationWorker(time_window=int(self._params['time_window'])).add_calculated_columns(data)
+        
+        if std_dev_column in data.columns:
+            StdDevCalculationWorker(time_window=int(self._params['time_window'])).add_calculated_columns(data)
+
+        data[self._columns[0]] = data[sma_column] - (
+            data[std_dev_column] * self._params['deviation']
         )
-        data[self._columns[1]] = data[f"Sma{str(self._params['time_window'])}"] + (
-            data[f"StdDev{str(self._params['time_window'])}"] * self._params['deviation']
+        data[self._columns[1]] = data[sma_column] + (
+            data[std_dev_column] * self._params['deviation']
         )
 
 
@@ -167,7 +315,7 @@ class RsiOldCalculationWorker(CalculationWorker):
 
     @Instrumentation.trace(name="RsiOldCalculationWorker")
     def add_calculated_columns(self, data):
-        identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+        identifier_grouped_data = data.groupby(self.get_group_cols(data.columns))
         data[CalculatedColumns.ClosePriceDiff] = identifier_grouped_data[
             BaseColumns.Close
         ].transform(lambda x: x.diff(1))
@@ -233,7 +381,7 @@ class RsiCalculationWorker(CalculationWorker):
 
     @Instrumentation.trace(name="RsiCalculationWorker")
     def add_calculated_columns(self, data):
-        result = data.groupby([BaseColumns.Identifier], group_keys=True).apply(
+        result = data.groupby(self.get_group_cols(data.columns), group_keys=True).apply(
             self.calculate_rsi
         )
         return result.reset_index(drop=True)
@@ -246,32 +394,32 @@ class StochRsiCalculationWorker(CalculationWorker):
         self._columns.append(CalculatedColumns.StochRsi_D)
 
     def calculate_stoch_rsi(self, group: pd.DataFrame):
-        data = ta.stochrsi(group[BaseColumns.Close], window=self._params['time_window'], smooth1=3, smooth2=3)
+        window = self._params['time_window']
+        data = ta.stochrsi(group[BaseColumns.Close], length=window, rsi_length=window, k=3, d=3)
         if data is not None:
-            group[CalculatedColumns.StochRsi_K] = data["STOCHRSIk_14_14_3_3"]
-            group[CalculatedColumns.StochRsi_D] = data["STOCHRSId_14_14_3_3"]
+            group[CalculatedColumns.StochRsi_K] = data[f"STOCHRSIk_{window}_{window}_3_3"]
+            group[CalculatedColumns.StochRsi_D] = data[f"STOCHRSId_{window}_{window}_3_3"]
         return group
 
     @Instrumentation.trace(name="StochRsiCalculationWorker")
     def add_calculated_columns(self, data):
-        result = data.groupby([BaseColumns.Identifier], group_keys=True).apply(
+        result = data.groupby(self.get_group_cols(data.columns), group_keys=True).apply(
             self.calculate_stoch_rsi
         )
         return result.reset_index(drop=True)
 
-
 class VwapCalculationWorker(CalculationWorker):
-    def __init__(self, time_window: int = 200):
+    def __init__(self, time_window: int = 1):
         super().__init__(time_window = int(time_window))
         self._columns.append(CalculatedColumns.Vwap)
 
-    @Instrumentation.trace(name="VwapCalculationWorker")
+    @Instrumentation.trace(name="Vwap2CalculationWorker")
     def add_calculated_columns(self, data):
         data[BaseColumns.Turnover] = data[BaseColumns.Turnover].replace("-", 0)
         data[BaseColumns.Volume] = data[BaseColumns.Volume].replace("-", 0)
         if len(data[BaseColumns.Identifier].unique()) > 1:
             data[CalculatedColumns.Vwap] = (
-                data.groupby(BaseColumns.Identifier)
+                data.groupby(self.get_group_cols(data.columns))
                 .apply(
                     lambda x: x[BaseColumns.Turnover].rolling(self._params['time_window']).sum()
                     / x.rolling(self._params['time_window'])[BaseColumns.Volume].sum()
@@ -281,7 +429,6 @@ class VwapCalculationWorker(CalculationWorker):
         else:
             data[CalculatedColumns.Vwap] = data[BaseColumns.Turnover].rolling(self._params['time_window']).sum() / data[BaseColumns.Volume].rolling(self._params['time_window']).sum()
 
-
 class LowestPriceInNextNDaysCalculationWorker(CalculationWorker):
     def __init__(self, N: int = 5, close_price_column: str = BaseColumns.Close, low_price_column: str = BaseColumns.Low):
         super().__init__(N = int(N), close_price_column = close_price_column, low_price_column = low_price_column)
@@ -290,7 +437,7 @@ class LowestPriceInNextNDaysCalculationWorker(CalculationWorker):
 
     @Instrumentation.trace(name="LowestPriceInNextNDaysCalculationWorker")
     def add_calculated_columns(self, data):
-        identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+        identifier_grouped_data = data.groupby(self.get_group_cols(data.columns))
         data[self._columns[0]] = identifier_grouped_data[
             self._params['low_price_column']
         ].transform(
@@ -302,6 +449,8 @@ class LowestPriceInNextNDaysCalculationWorker(CalculationWorker):
             * 100
         )
 
+    def get_calculation_window(self) -> CalculationWindow:
+        return CalculationWindow(trailing=0, leading=int(self._params['N']))
 
 class HighestPriceInNextNDaysCalculationWorker(CalculationWorker):
     def __init__(self, N: int = 5, close_price_column: str = BaseColumns.Close, high_price_column: str = BaseColumns.High):
@@ -311,7 +460,7 @@ class HighestPriceInNextNDaysCalculationWorker(CalculationWorker):
 
     @Instrumentation.trace(name="HighestPriceInNextNDaysCalculationWorker")
     def add_calculated_columns(self, data):
-        identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+        identifier_grouped_data = data.groupby(self.get_group_cols(data.columns))
         data[self._columns[0]] = identifier_grouped_data[
             self._params['high_price_column']
         ].transform(
@@ -321,4 +470,41 @@ class HighestPriceInNextNDaysCalculationWorker(CalculationWorker):
             (data[self._columns[0]] - data[self._params['close_price_column']])
             / data[self._params['close_price_column']]
             * 100
+        )
+
+    def get_calculation_window(self) -> CalculationWindow:
+        return CalculationWindow(trailing=0, leading=int(self._params['N']))
+
+
+class GrowthCalculationWorker(CalculationWorker):
+    def __init__(self, value_column: str = BaseColumns.Close, N: int = None):
+        super().__init__(value_column=value_column, N=int(N))
+        self._columns.append(f"Growth{N}")
+        self._columns.append(f"GrowthPerc{N}")
+
+    @Instrumentation.trace(name="GrowthCalculationWorker")
+    def add_calculated_columns(self, data: pd.DataFrame):
+        identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+        N: int = self._params['N']
+        data[self._columns[0]] = identifier_grouped_data[self._params["value_column"]].transform(lambda x:
+            x - x.shift(N)
+        )
+        data[self._columns[1]] = (
+            data[self._columns[0]] / data[self._params["value_column"]] * 100
+        )
+
+
+class ColumnsDeltaCalculationWorker(CalculationWorker):
+    def __init__(self, value_column_a: str = None, value_column_b: str = None):
+        super().__init__(value_column_a=value_column_a, value_column_b=value_column_b)
+        self._columns.append(f"{value_column_a}-{value_column_b}")
+        self._columns.append(f"{value_column_a}-{value_column_b}AsPerc")
+
+    @Instrumentation.trace(name="ColumnsDeltaCalculationWorker")
+    def add_calculated_columns(self, data: pd.DataFrame):
+        data[self._columns[0]] = (
+            data[self._params["value_column_a"]] - data[self._params["value_column_b"]]
+        )
+        data[self._columns[1]] = (
+            data[self._columns[0]] / data[self._params["value_column_a"]] * 100
         )
