@@ -491,7 +491,7 @@ class ColumnGrowthCalculationWorker(CalculationWorker):
             x - x.shift(N)
         )
         data[self._columns[1]] = (
-            data[self._columns[0]] / data[self._params["value_column"]] * 100
+            data[self._columns[0]] / (data[self._params["value_column"]] - data[self._columns[0]]) * 100
         )
 
 

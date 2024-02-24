@@ -395,8 +395,8 @@ def test_calculations_price_crossing_above_flag(
 @pytest.mark.parametrize(
     "identifier,N,for_date,value,value_perc",
     [
-        ("RELIANCE", 5, date(2023, 12, 14), 7.1, 0.28813181015765715),
-        ("INFY", 10, date(2023, 12, 29), 41.45, 2.686499449),
+        ("RELIANCE", 5, date(2023, 12, 14), 7.1, 0.28896440),
+        ("INFY", 10, date(2023, 12, 29), 41.45, 2.76066469),
     ],
 )
 def test_calculations_growth(
