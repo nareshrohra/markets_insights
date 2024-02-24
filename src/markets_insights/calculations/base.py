@@ -40,6 +40,7 @@ class CalculationWorker:
                     DerivativesBaseColumns.OptionType,
                     DerivativesBaseColumns.ExpiryDate,
                     DerivativesBaseColumns.StrikePrice,
+                    DerivativesBaseColumns.OptionType,
                 ] if group_col in columns
             )
 
@@ -144,11 +145,11 @@ class ColumnValueCrossedAboveAnotherColumnValueFlagWorker(CalculationWorker):
 
     @Instrumentation.trace(name="ColumnValueCrossedAboveAnotherColumnValueFlagWorker")
     def add_calculated_columns(self, data: pd.DataFrame):
-        identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+        grouped_data = data.groupby(self.get_group_cols(data.columns))
         column_a = self._params["value_column_a"]
         column_b = self._params["value_column_b"]
         if len(data[BaseColumns.Identifier].unique()) > 1:
-            data[self._columns[0]] = identifier_grouped_data.apply(
+            data[self._columns[0]] = grouped_data.apply(
                 lambda x: (x.shift(1)[column_a] < x.shift(1)[column_b])
                 & (x[column_a] >= x[column_b])
             ).reset_index(level=0, drop=True)
@@ -167,7 +168,7 @@ class ColumnValueCrossedBelowAnotherColumnValueFlagWorker(CalculationWorker):
 
     @Instrumentation.trace(name="ColumnValueCrossedBelowAnotherColumnValueFlagWorker")
     def add_calculated_columns(self, data: pd.DataFrame):
-        identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+        identifier_grouped_data = data.groupby(self.get_group_cols(data.columns))
         column_a = self._params["value_column_a"]
         column_b = self._params["value_column_b"]
         if len(data[BaseColumns.Identifier].unique()) > 1:
@@ -476,15 +477,15 @@ class HighestPriceInNextNDaysCalculationWorker(CalculationWorker):
         return CalculationWindow(trailing=0, leading=int(self._params['N']))
 
 
-class GrowthCalculationWorker(CalculationWorker):
-    def __init__(self, value_column: str = BaseColumns.Close, N: int = None):
+class ColumnGrowthCalculationWorker(CalculationWorker):
+    def __init__(self, value_column: str = BaseColumns.Close, N: int = 0):
         super().__init__(value_column=value_column, N=int(N))
-        self._columns.append(f"Growth{N}")
-        self._columns.append(f"GrowthPerc{N}")
+        self._columns.append(f"{value_column}Growth{str(N)}Sessions")
+        self._columns.append(f"{value_column}GrowthPerc{str(N)}Sessions")
 
-    @Instrumentation.trace(name="GrowthCalculationWorker")
+    @Instrumentation.trace(name="ColumnGrowthCalculationWorker")
     def add_calculated_columns(self, data: pd.DataFrame):
-        identifier_grouped_data = data.groupby(BaseColumns.Identifier)
+        identifier_grouped_data = data.groupby(self.get_group_cols(data.columns))
         N: int = self._params['N']
         data[self._columns[0]] = identifier_grouped_data[self._params["value_column"]].transform(lambda x:
             x - x.shift(N)
