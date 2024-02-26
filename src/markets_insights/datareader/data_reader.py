@@ -259,7 +259,6 @@ class ArithmaticOpReader(DataReader):
                 merged_df = l_data
 
             for col in TypeHelper.get_class_static_values(BasePriceColumns):
-                Instrumentation.info(f"{prefix_l}{col} {self.op_symbol} {prefix_r}{col}")
                 merged_df[col] = self.operator(
                     merged_df[f"{prefix_l}{col}"], merged_df[f"{prefix_r}{col}"]
                 )

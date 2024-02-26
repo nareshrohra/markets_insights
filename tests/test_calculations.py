@@ -11,7 +11,7 @@ from markets_insights.calculations.base import (
     ColumnValueBelowAnotherColumnValueFlagWorker,
     ColumnValueAboveAnotherColumnValueFlagWorker,
     ColumnsDeltaCalculationWorker,
-    ColumnGrowthCalculationWorker,
+    ColumnChangeOverNDaysCalculationWorker,
     PriceCrossedAboveColumnValueFlagWorker,
     PriceCrossedBelowColumnValueFlagWorker,
     SmaCalculationWorker,
@@ -405,9 +405,9 @@ def test_calculations_growth(
     # Prepare calculation pipeline
     pipelines = MultiDataCalculationPipelines()
     pipelines.set_item(
-        "growth",
+        "change",
         CalculationPipelineBuilder.create_pipeline_for_worker(
-            ColumnGrowthCalculationWorker(N=N)
+            ColumnChangeOverNDaysCalculationWorker(N=N)
         ),
     )
     equity_processor.set_calculation_pipelines(pipelines)
@@ -421,8 +421,8 @@ def test_calculations_growth(
             str(IdentifierFilter(identifier) & DateFilter(for_date=for_date))
         ),
         col_value_pairs={
-            f"CloseGrowth{str(N)}Sessions": value,
-            f"CloseGrowthPerc{str(N)}Sessions": value_perc
+            f"CloseChange{str(N)}Sessions": value,
+            f"CloseChangePerc{str(N)}Sessions": value_perc
         }
     )
 
