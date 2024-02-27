@@ -502,7 +502,9 @@ class MultiDatesDataReader(DataReader):
         self.reader = reader
 
     def read(self, criteria: ReaderDateCriteria):
-
+        if not isinstance(criteria, MultiDatesCriteria):
+            raise Exception("MultiDatesDataReader.read() expects MultiDatesCriteria")
+        
         result = None
         for for_date in criteria.for_dates:
             if MarketDaysHelper.is_open_for_day(pd.Timestamp(for_date).date()):
@@ -533,7 +535,9 @@ class DateRangeDataReader(DataReader):
         self.reader = reader
 
     def read(self, criteria: ReaderDateCriteria):
-
+        if not isinstance(criteria, ReaderDateCriteria):
+            raise Exception("MultiDatesDataReader.read() expects ReaderDateCriteria")
+        
         datelist = MarketDaysHelper.get_days_list_for_range(criteria.from_date, criteria.to_date)
         result = None
         for for_date in datelist:

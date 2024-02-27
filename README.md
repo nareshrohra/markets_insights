@@ -36,8 +36,8 @@ daterange_reader = data_reader.DateRangeDataReader(reader)
 
 from_date = datetime.date(2023, 1, 1)
 to_date = datetime.date(2023, 12, 31)
-result = daterange_reader.read(from_date = from_date, to_date = to_date)
-result.head(3)
+result = daterange_reader.read(data_reader.DateRangeCriteria(from_date, to_date))
+result.head(3).to_markdown()
 ```
 
 *Output*
@@ -53,14 +53,15 @@ In this example we will use HistoricalDataProcessor class to get data between a 
 
 ```python
 # import classes & setup
+# import classes & setup
 from markets_insights.dataprocess.data_processor import HistoricalDataProcessor
-from markets_insights.datareader.data_reader import NseIndicesReader
+from markets_insights.datareader.data_reader import NseIndicesReader, DateRangeCriteria
 histDataProcessor = HistoricalDataProcessor()
 
 # Fetch and process the data
-year_start = datetime.date(2023, 1, 1)
+year_start = datetime.date(2023, 12, 1)
 year_end = datetime.date(2023, 12, 31)
-result = histDataProcessor.process(NseIndicesReader(), {'from_date': year_start, 'to_date': year_end})
+result = histDataProcessor.process(NseIndicesReader(), DateRangeCriteria(year_start, year_end))
 ```
 
 #### Displaying the output
@@ -86,7 +87,7 @@ Below example demonstrates calculating RSI using the calculation pipeline.
 ```python
 # import classes & setup options
 import datetime
-from markets_insights.datareader.data_reader import BhavCopyReader
+from markets_insights.datareader.data_reader import BhavCopyReader, DateRangeCriteria
 from markets_insights.dataprocess.data_processor import HistoricalDataProcessor, MultiDataCalculationPipelines, CalculationPipelineBuilder, HistoricalDataProcessOptions
 from markets_insights.calculations.base import DatePartsCalculationWorker
 
@@ -99,7 +100,7 @@ histDataProcessor = HistoricalDataProcessor(options)
 # Fetch the data
 year_start = datetime.date(2023, 1, 1)
 to_date = datetime.date(2023, 12, 31)
-result = histDataProcessor.process(reader, {'from_date': year_start, 'to_date': to_date})
+result = histDataProcessor.process(reader, DateRangeCriteria(year_start, to_date))
 
 # Prepare calculation pipeline
 pipelines = MultiDataCalculationPipelines()
@@ -135,14 +136,14 @@ We perform below steps to prepare our analysis data
 - Calculate the highest and lowest price change in the next 1, 3, 5, 7 & 10 trading sessions.
 - Find the median for highest price change and lowest price change whenever the RSI crosses the control limits.
 
-```
+```python
 # import classes
-from markets_insights.datareader.data_reader import BhavCopyReader
+from markets_insights.datareader.data_reader import BhavCopyReader, DateRangeCriteria
 
 # Fetch the data
 year_start = datetime.date(2023, 1, 1)
 to_date = datetime.date(2023, 12, 31)
-result = histDataProcessor.process(BhavCopyReader(), {'from_date': year_start, 'to_date': to_date})
+result = histDataProcessor.process(BhavCopyReader(), DateRangeCriteria(year_start, to_date))
 ```
 
 ```python
@@ -188,7 +189,7 @@ dtype: float64
 #### Show the median price change % for highest price rise whenever the RSI crosses below
 ```python
 daily_data[
-(daily_data[CalculatedColumns.RsiCrossedAbove])
+(daily_data[CalculatedColumns.RsiCrossedBelow])
 ][fwd_looking_price_rise_cols].median()
 ```
 *Output*
@@ -200,6 +201,23 @@ HighestPercRiseInNext30Days    13.255317
 HighestPercRiseInNext45Days    16.292135
 dtype: float64
 ```
+
+### Performing Arithmetic on Readers
+```python
+from markets_insights.core.core import InstrumentTypeFilter
+from markets_insights.datareader.data_reader import BhavCopyReader, NseDerivatiesReader, NseIndicesReader
+from markets_insights.core.core import IdentifierFilter
+
+for_date = datetime.date(2023, 12, 5)
+indices_reader = NseIndicesReader()
+vix_reader = NseIndicesReader().set_filter(IdentifierFilter("India VIX"))
+op_reader = indices_reader / vix_reader
+data = op_reader.read(ForDateCriteria(for_date)).query(str(IdentifierFilter("Nifty 50 / India VIX")))
+data.head(3)
+```
+
+*Output*
+
 
 ### Extending the Framework: Creating a DataReader
 In this example we will create a new data reader to read data for Nasdaq listed equities. We will use **yfinance** python library for this.
@@ -225,19 +243,19 @@ class NasdaqDataReader (DateRangeDataReader):
     self.name = "NasdaqDataReader"
 
   @Instrumentation.trace(name="NasdaqDataReader.read")
-  def read(self, from_date, to_date):
+  def read(self, criteria: DateRangeCriteria):
     df_list = list()
     for ticker in self.tickers:
-        data = yf.download(ticker, group_by="Ticker", start=from_date, end=to_date)
+        data = yf.download(ticker, group_by="Ticker", start=criteria.from_date, end=criteria.to_date)
         data['ticker'] = ticker
         df_list.append(data)
 
     # combine all dataframes into a single dataframe
     df = pandas.concat(df_list)
 
-    data = df.reset_index().rename(columns = self.get_column_name_mappings())
-    data[BaseColumns.Date] = pandas.to_datetime(data[BaseColumns.Date])
-    return data
+    final_data = df.reset_index().rename(columns = self.get_column_name_mappings())
+    final_data[BaseColumns.Date] = pandas.to_datetime(final_data[BaseColumns.Date])
+    return final_data
   
   def get_column_name_mappings(self):
     return {
@@ -256,7 +274,8 @@ The calculation pipeline will not be different except we will pass NasdaqDataRea
 
 ```python
 # import classes & setup options
-from markets_insights.dataprocess.data_processor import HistoricalDataProcessor, MultiDataCalculationPipelines, CalculationPipelineBuilder, HistoricalDataProcessOptions
+import datetime
+from markets_insights.dataprocess.data_processor import HistoricalDataProcessor, MultiDataCalculationPipelines, CalculationPipelineBuilder, HistoricalDataProcessOptions, DateRangeCriteria
 from markets_insights.calculations.base import DatePartsCalculationWorker
 
 reader = NasdaqDataReader()
@@ -268,7 +287,7 @@ histDataProcessor = HistoricalDataProcessor(options)
 # Fetch the data
 year_start = datetime.date(2023, 1, 1)
 to_date = datetime.date(2023, 12, 31)
-result = histDataProcessor.process(reader, {'from_date': year_start, 'to_date': to_date})
+result = histDataProcessor.process(reader, DateRangeCriteria(year_start, to_date))
 
 # Prepare calculation pipeline
 pipelines = MultiDataCalculationPipelines()
@@ -338,13 +357,14 @@ class FibonacciRetracementCalculationWorker (CalculationWorker):
 #### Create pipline with the FibnocciRetracementCalculationWorker and run
 Now, that our worker is created let us use it in a calculation pipeline. We can use it with any instrument (index, stock) that are supported. Event for the Nasdaq instruments that were supported in earlier examples. For this example, let us take NSE Indexes.
 ```python
-from markets_insights.datareader.data_reader import NseIndicesReader
+# Create pipline with the FibnocciRetracementCalculationWorker and run 
+from markets_insights.datareader.data_reader import NseIndicesReader, DateRangeCriteria
 from markets_insights.dataprocess.data_processor import HistoricalDataProcessor, HistoricalDataProcessOptions, \
   MultiDataCalculationPipelines, CalculationPipeline
 histDataProcessor = HistoricalDataProcessor(HistoricalDataProcessOptions(include_monthly_data=False, include_annual_data=False))
 
 # Fetch the data
-result = histDataProcessor.process(NseIndicesReader(), {'from_date': datetime.date(2023, 12, 1), 'to_date': datetime.date(2023, 12, 31)})
+result = histDataProcessor.process(NseIndicesReader(), DateRangeCriteria(datetime.date(2023, 12, 1), datetime.date(2023, 12, 31)))
 
 # Prepare calculation pipeline
 fbr50_worker = FibonacciRetracementCalculationWorker(time_window=7, level_perct=50)
