@@ -8,7 +8,7 @@ from markets_insights.core.core import IdentifierFilter
 from markets_insights.core.column_definition import BaseColumns
 from markets_insights.core.environment import Environment, EnvironmentSettings
 
-from markets_insights.datareader.data_reader import NseIndicesReader
+from markets_insights.datareader.data_reader import DateRangeCriteria, NseIndicesReader
 from markets_insights.dataprocess.data_processor import (
     HistoricalDataProcessOptions,
     HistoricalDataProcessor,
@@ -45,7 +45,7 @@ def test_historical_data_processor_caching_without_filter(identifier: str, uniqu
 
     result: HistoricalDataset = processor.process(
         reader,
-        {"from_date": Presets.dates.dec_start, "to_date": Presets.dates.dec_end},
+        DateRangeCriteria(Presets.dates.dec_start, Presets.dates.dec_end),
     )
     unique_ids = result.get_daily_data()[BaseColumns.Identifier].unique()
     assert len(unique_ids) == unique_ids_count

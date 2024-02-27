@@ -25,7 +25,7 @@ setup()
 
 import markets_insights
 from markets_insights.core.column_definition import BaseColumns, CalculatedColumns
-from markets_insights.datareader.data_reader import BhavCopyReader, NseIndicesReader
+from markets_insights.datareader.data_reader import BhavCopyReader, DateRangeCriteria, NseIndicesReader
 from markets_insights.dataprocess.data_processor import (
     CalculationPipelineBuilder,
     HistoricalDataProcessor,
@@ -36,13 +36,13 @@ from markets_insights.dataprocess.data_processor import (
 indices_processor = HistoricalDataProcessor()
 indices_result: HistoricalDataset = indices_processor.process(
     NseIndicesReader(),
-    {"from_date": Presets.dates.year_start, "to_date": Presets.dates.year_end},
+    DateRangeCriteria(Presets.dates.year_start, Presets.dates.year_end),
 )
 
 equity_processor = HistoricalDataProcessor()
 equity_result: HistoricalDataset = equity_processor.process(
     BhavCopyReader(),
-    {"from_date": Presets.dates.q4_start, "to_date": Presets.dates.q4_end},
+    DateRangeCriteria(Presets.dates.q4_start, Presets.dates.q4_end),
 )
 
 
@@ -189,7 +189,7 @@ def test_calculations_vwap_with_identifier(identifier: str, for_date: date, vwap
     processor = HistoricalDataProcessor()
     result: HistoricalDataset = processor.process(
         BhavCopyReader().set_filter(IdentifierFilter(identifier)),
-        {"from_date": Presets.dates.year_start, "to_date": Presets.dates.year_end},
+        DateRangeCriteria(from_date = Presets.dates.year_start, to_date = Presets.dates.year_end),
     )
 
     # Prepare calculation pipeline

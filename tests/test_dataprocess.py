@@ -12,7 +12,7 @@ from markets_insights.core.column_definition import (
     BaseColumns,
     CalculatedColumns,
 )
-from markets_insights.datareader.data_reader import NseIndicesReader
+from markets_insights.datareader.data_reader import DateRangeCriteria, NseIndicesReader
 from markets_insights.dataprocess.data_processor import (
     HistoricalDataProcessOptions,
     HistoricalDataProcessor,
@@ -24,7 +24,7 @@ def test_historical_data_processor_without_options():
     processor = HistoricalDataProcessor()
     result: HistoricalDataset = processor.process(
         NseIndicesReader(),
-        {"from_date": Presets.dates.dec_start, "to_date": Presets.dates.dec_end},
+        DateRangeCriteria(Presets.dates.dec_start, Presets.dates.dec_end),
     )
     check_base_cols_present(result.get_daily_data(), "Daily")
     assert result.get_daily_data().shape[0] == 2146
@@ -50,7 +50,7 @@ def test_historical_data_processor_with_options(options: HistoricalDataProcessOp
     processor = HistoricalDataProcessor(options)
     result = processor.process(
         NseIndicesReader(),
-        {"from_date": Presets.dates.dec_start, "to_date": Presets.dates.dec_end},
+        DateRangeCriteria(Presets.dates.dec_start, Presets.dates.dec_end),
     )
     check_base_cols_present(result.get_daily_data(), "Daily")
 
@@ -69,7 +69,7 @@ def test_historical_data_processor_monthly_aggregration():
     processor = HistoricalDataProcessor()
     result = processor.process(
         NseIndicesReader(),
-        {"from_date": Presets.dates.dec_start, "to_date": Presets.dates.dec_end},
+        DateRangeCriteria(Presets.dates.dec_start, Presets.dates.dec_end),
     )
 
     check_col_values(
@@ -90,7 +90,7 @@ def test_historical_data_processor_annual_aggregration():
     processor = HistoricalDataProcessor()
     result = processor.process(
         NseIndicesReader(),
-        {"from_date": Presets.dates.year_start, "to_date": Presets.dates.year_end},
+        DateRangeCriteria(Presets.dates.year_start, Presets.dates.year_end),
     )
 
     check_col_values(
@@ -110,7 +110,7 @@ def test_historical_data_processor_with_filter():
     processor = HistoricalDataProcessor()
     result = processor.process(
         NseIndicesReader().set_filter(IdentifierFilter("Nifty 50")),
-        {"from_date": Presets.dates.year_start, "to_date": Presets.dates.year_end},
+        DateRangeCriteria(Presets.dates.year_start, Presets.dates.year_end),
     )
 
     assert len(result.get_daily_data()[BaseColumns.Identifier].unique()) == 1

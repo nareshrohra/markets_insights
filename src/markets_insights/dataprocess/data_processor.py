@@ -2,7 +2,7 @@ from markets_insights.core.environment import EnvironmentSettings
 import os
 from string import Template
 import pandas as pd
-from markets_insights.datareader.data_reader import DataReader, DateRangeDataReader
+from markets_insights.datareader.data_reader import DataReader, DateRangeDataReader, DateRangeCriteria
 from markets_insights.core.column_definition import (
     BaseColumns,
     BasePriceColumns,
@@ -317,12 +317,12 @@ class HistoricalDataProcessor(DataProcessor):
             daily_data[col_name] = daily_data[col_name].astype(float)
 
     @Instrumentation.trace(name="HistoricalDataProcessor.process")
-    def process(self, reader: DataReader, options: dict) -> HistoricalDataset:
-        from_date = MarketDaysHelper.get_this_or_next_market_day(options["from_date"])
-        to_date = MarketDaysHelper.get_this_or_previous_market_day(options["to_date"])
+    def process(self, reader: DataReader, criteria: DateRangeCriteria) -> HistoricalDataset:
+        from_date = MarketDaysHelper.get_this_or_next_market_day(criteria.from_date)
+        to_date = MarketDaysHelper.get_this_or_previous_market_day(criteria.to_date)
 
-        historical_data = self.get_data(reader, options, from_date, to_date)
-        manual_data = self.get_manual_data(reader, options, from_date, to_date)
+        historical_data = self.get_data(reader, from_date, to_date)
+        manual_data = self.get_manual_data(reader, from_date, to_date)
 
         if manual_data is not None:
             historical_data = (
@@ -454,7 +454,7 @@ class HistoricalDataProcessor(DataProcessor):
 
     @Instrumentation.trace(name="HistoricalDataProcessor.get_manual_data")
     def get_manual_data(
-        self, reader: DataReader, options: dict, from_date: date, to_date: date
+        self, reader: DataReader, from_date: date, to_date: date
     ):
         manual_data_file = os.path.join(
             self.manual_data_dir_template.substitute(**EnvironmentSettings.Paths),
@@ -474,7 +474,7 @@ class HistoricalDataProcessor(DataProcessor):
 
     @Instrumentation.trace(name="HistoricalDataProcessor.get_data")
     def get_data(
-        self, reader: DataReader, options: dict, from_date: date, to_date: date
+        self, reader: DataReader, from_date: date, to_date: date
     ):
         Instrumentation.debug("Started to read data")
         output_file = os.path.join(
@@ -505,7 +505,7 @@ class HistoricalDataProcessor(DataProcessor):
             latest = pd.Timestamp(historical_data[BaseColumns.Date].max()).date()
             if earliest > from_date:
                 Instrumentation.info(f"Reading data from {from_date} to {earliest}")
-                read_data = dateRangeReader.unset_filter().read(from_date, earliest)
+                read_data = dateRangeReader.unset_filter().read(DateRangeCriteria(from_date, earliest))
                 dateRangeReader.reset_filter()
                 historical_data = pd.concat(
                     [historical_data, read_data], ignore_index=True
@@ -514,7 +514,7 @@ class HistoricalDataProcessor(DataProcessor):
 
             if latest < to_date:
                 Instrumentation.info(f"Reading data from {latest} to {to_date}")
-                read_data = dateRangeReader.unset_filter().read(latest, to_date)
+                read_data = dateRangeReader.unset_filter().read(DateRangeCriteria(latest, to_date))
                 dateRangeReader.reset_filter()
                 historical_data = pd.concat(
                     [historical_data, read_data], ignore_index=True
@@ -522,7 +522,7 @@ class HistoricalDataProcessor(DataProcessor):
                 save_to_file = True
         else:
             Instrumentation.info(f"Reading data from {from_date} to {to_date}")
-            historical_data = dateRangeReader.unset_filter().read(from_date, to_date)
+            historical_data = dateRangeReader.unset_filter().read(DateRangeCriteria(from_date, to_date))
             dateRangeReader.reset_filter()
             save_to_file = True
 

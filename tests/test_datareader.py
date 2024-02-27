@@ -28,6 +28,9 @@ from markets_insights.datareader.data_reader import (
     NseDerivatiesReader,
     MultiDatesDataReader,
     DateRangeDataReader,
+    ForDateCriteria,
+    MultiDatesCriteria,
+    DateRangeCriteria,
 )
 
 
@@ -42,7 +45,7 @@ from markets_insights.datareader.data_reader import (
     ],
 )
 def test_single_day_reader(reader: DataReader, rows: int):
-    data = reader.read(PresetDates.dec_start)
+    data = reader.read(ForDateCriteria(PresetDates.dec_start))
     check_base_cols_present(data, reader.name)
     assert data.shape[0] == rows
 
@@ -51,7 +54,7 @@ def test_single_day_reader(reader: DataReader, rows: int):
     "reader", [BhavCopyReader(), NseIndicesReader(), NseDerivatiesReader(), NseEquityFuturesDataReader(), NseIndexFuturesDataReader()]
 )
 def test_recent_day_read(reader: DataReader):
-    data = reader.read(PresetDates.recent_day)
+    data = reader.read(ForDateCriteria(PresetDates.recent_day))
     check_base_cols_present(data, reader.name)
     assert data.shape[0] > 1
 
@@ -60,7 +63,7 @@ def test_recent_day_read(reader: DataReader):
     "reader", [NseDerivatiesReader(), NseEquityFuturesDataReader(), NseIndexFuturesDataReader()]
 )
 def test_derivatives_data_reader_columns(reader: DataReader):
-    data = reader.read(PresetDates.dec_start)
+    data = reader.read(ForDateCriteria(PresetDates.dec_start))
     check_cols_present(
         data,
         [
@@ -74,7 +77,7 @@ def test_derivatives_data_reader_columns(reader: DataReader):
 def test_multi_dates_reader():
     reader = MultiDatesDataReader(NseIndicesReader())
     data = reader.read(
-        [PresetDates.year_start, PresetDates.dec_end, PresetDates.dec_start]
+        MultiDatesCriteria([PresetDates.year_start, PresetDates.dec_end, PresetDates.dec_start])
     )
     check_base_cols_present(data, reader)
     assert data.shape[0] == 319
@@ -82,7 +85,7 @@ def test_multi_dates_reader():
 
 def test_date_range_reader():
     reader = DateRangeDataReader(NseIndicesReader())
-    data = reader.read(from_date=PresetDates.dec_start, to_date=PresetDates.dec_end)
+    data = reader.read(DateRangeCriteria(from_date=PresetDates.dec_start, to_date=PresetDates.dec_end))
     check_base_cols_present(data, reader)
     assert data.shape[0] == 2146
 
@@ -92,7 +95,7 @@ def test_date_range_reader():
     [(BhavCopyReader(), 19493616.1), (NseIndicesReader(), 224615300000.0)],
 )
 def test_turnover_rescaled(reader: DataReader, turnover: float):
-    data = reader.read(PresetDates.dec_start)
+    data = reader.read(ForDateCriteria(PresetDates.dec_start))
     check_col_values(data=data, col_value_pairs={BaseColumns.Turnover: turnover})
 
 
@@ -109,7 +112,7 @@ def test_arithmatic_op(operation, close):
     l_reader = NseDerivatiesReader().set_filter(InstrumentTypeFilter("FUTSTK"))
     r_reader = BhavCopyReader()
     op_reader = operation(l_reader, r_reader)
-    data = op_reader.read(for_date=PresetDates.dec_start).query(
+    data = op_reader.read(ForDateCriteria(for_date=PresetDates.dec_start)).query(
         str(IdentifierFilter("RELIANCE"))
     )
     check_col_values(
@@ -133,7 +136,7 @@ def test_arithmatic_op_single_id_right(operation, symbol, close):
     indices_reader = NseIndicesReader()
     vix_reader = NseIndicesReader().set_filter(IdentifierFilter("India VIX"))
     op_reader = operation(indices_reader, vix_reader)
-    data = op_reader.read(for_date=PresetDates.dec_start).query(
+    data = op_reader.read(ForDateCriteria(for_date=PresetDates.dec_start)).query(
         str(IdentifierFilter(f"Nifty 50 {symbol} India VIX"))
     )
 
@@ -159,7 +162,7 @@ def test_arithmatic_op_single_id_left(operation, symbol, close):
     indices_reader = NseIndicesReader()
     vix_reader = NseIndicesReader().set_filter(IdentifierFilter("India VIX"))
     op_reader: DataReader = operation(vix_reader, indices_reader)
-    data = op_reader.read(for_date=PresetDates.dec_start).query(
+    data = op_reader.read(ForDateCriteria(for_date=PresetDates.dec_start)).query(
         str(IdentifierFilter(f"India VIX {symbol} Nifty 50"))
     )
 
@@ -188,7 +191,7 @@ def test_arithmatic_op_single_id_both(operation, symbol, close):
     indices_reader = NseIndicesReader().set_filter(IdentifierFilter("Nifty 50"))
     vix_reader = NseIndicesReader().set_filter(IdentifierFilter("India VIX"))
     op_reader: DataReader = operation(indices_reader, vix_reader)
-    data = op_reader.read(for_date=PresetDates.dec_start)
+    data = op_reader.read(ForDateCriteria(for_date=PresetDates.dec_start))
 
     check_col_values(
         data,
@@ -207,7 +210,7 @@ def test_arithmatic_multiple_ops():
     fut_reader = NseDerivatiesReader().set_filter(InstrumentTypeFilter("FUTSTK"))
     op_reader = fut_reader - eq_reader
     data = (
-        op_reader.read(for_date=PresetDates.dec_start)
+        op_reader.read(ForDateCriteria(for_date=PresetDates.dec_start))
         .query(str(IdentifierFilter("RELIANCE")))
         .sort_values(DerivativesBaseColumns.ExpiryDate)
     )

@@ -1,4 +1,6 @@
 import math
+
+from attr import dataclass
 import markets_insights as mi
 
 from urllib.request import urlopen
@@ -34,6 +36,25 @@ class ReaderOptions:
     cutoff_date = None
 
     download_timeout = 5  # seconds
+
+
+class ReaderDateCriteria:
+    pass
+
+@dataclass
+class ForDateCriteria(ReaderDateCriteria):
+    for_date: date
+
+
+@dataclass
+class DateRangeCriteria(ReaderDateCriteria):
+    from_date: date
+    to_date: date
+
+
+@dataclass
+class MultiDatesCriteria(ReaderDateCriteria):
+    for_dates: list[date]
 
 
 class DataReader:
@@ -78,8 +99,8 @@ class DataReader:
 
         return merged_df
 
-    def read(self, for_date: date) -> pd.DataFrame:
-        return self.read_data(for_date)
+    def read(self, criteria: ReaderDateCriteria) -> pd.DataFrame:
+        return self.read_data(criteria.for_date)
     
     def unset_filter(self):
         self.skip_filter = True
@@ -213,9 +234,9 @@ class ArithmaticOpReader(DataReader):
         self.col_prefix = ""
         self.name = f"{left.name}{op_symbol}{right.name}"
 
-    def read(self, for_date: date) -> pd.DataFrame:
-        l_data = self.l_reader.read(for_date=for_date)
-        r_data = self.r_reader.read(for_date=for_date)
+    def read(self, criteria: ReaderDateCriteria) -> pd.DataFrame:
+        l_data = self.l_reader.read(criteria)
+        r_data = self.r_reader.read(criteria)
         if not (l_data.empty or r_data.empty):
             on_cols = [BaseColumns.Identifier, BaseColumns.Date]
             prefix_l = self.l_reader.col_prefix
@@ -404,8 +425,8 @@ class NseEquityFuturesDataReader(NseDerivatiesReader):
         self.col_prefix = "Futures-"
     
 
-    def read(self, for_date: date) -> pd.DataFrame:
-        data: pd.DataFrame = super().read_data(for_date)
+    def read(self, criteria: ReaderDateCriteria) -> pd.DataFrame:
+        data: pd.DataFrame = super().read_data(criteria.for_date)
         return data.query(str(InstrumentTypeFilter("FUTSTK")))
 
 
@@ -415,8 +436,8 @@ class NseIndexFuturesDataReader(NseDerivatiesReader):
         self.name = "nse_futidx"
         self.col_prefix = "Futures-"
 
-    def read(self, for_date: date) -> pd.DataFrame:
-        data: pd.DataFrame = super().read_data(for_date)
+    def read(self, criteria: ReaderDateCriteria) -> pd.DataFrame:
+        data: pd.DataFrame = super().read_data(criteria.for_date)
         return data.query(str(InstrumentTypeFilter("FUTIDX")))
     
     def sanitize_data(self, data: pd.DataFrame):
@@ -480,15 +501,15 @@ class MultiDatesDataReader(DataReader):
         super().__init__()
         self.reader = reader
 
-    def read(self, datelist):
+    def read(self, criteria: ReaderDateCriteria):
 
         result = None
-        for for_date in datelist:
+        for for_date in criteria.for_dates:
             if MarketDaysHelper.is_open_for_day(pd.Timestamp(for_date).date()):
                 try:
                     if self.skip_filter:
                         self.reader.unset_filter()
-                    data = self.reader.read(for_date)
+                    data = self.reader.read(ForDateCriteria(for_date))
                     self.reader.reset_filter()
 
                     if result is None:
@@ -511,9 +532,9 @@ class DateRangeDataReader(DataReader):
         super().__init__()
         self.reader = reader
 
-    def read(self, from_date, to_date):
+    def read(self, criteria: ReaderDateCriteria):
 
-        datelist = MarketDaysHelper.get_days_list_for_range(from_date, to_date)
+        datelist = MarketDaysHelper.get_days_list_for_range(criteria.from_date, criteria.to_date)
         result = None
         for for_date in datelist:
             if MarketDaysHelper.is_open_for_day(pd.Timestamp(for_date).date()):
@@ -521,7 +542,7 @@ class DateRangeDataReader(DataReader):
                     if self.skip_filter:
                         self.reader.unset_filter()
 
-                    data = self.reader.read(for_date)
+                    data = self.reader.read(ForDateCriteria(for_date))
                     self.reader.reset_filter()
 
                     if result is None:
