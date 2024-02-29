@@ -284,12 +284,11 @@ class HistoricalDataProcessor(DataProcessor):
 
     @Instrumentation.trace(name="HistoricalDataProcessor.sanitize_data")
     def sanitize_data(self, data: pd.DataFrame):
+        if data.empty:
+            return data
+        
         self.remove_unnamed_columns(data)
         
-        data[BaseColumns.Identifier] = data[
-            BaseColumns.Identifier
-        ].str.upper()
-
         if not BaseColumns.PreviousClose in data.columns:
             data[BaseColumns.PreviousClose] = data.groupby(
                 BaseColumns.Identifier
@@ -454,6 +453,7 @@ class HistoricalDataProcessor(DataProcessor):
             manual_data = manual_data[
                 manual_data[BaseColumns.Date].dt.date.between(from_date, to_date)
             ]
+
             self.sanitize_data(manual_data)
 
             return manual_data
@@ -523,6 +523,12 @@ class HistoricalDataProcessor(DataProcessor):
         if save_to_file == True:
             Instrumentation.debug(f"Saving data to file: {output_file}")
             historical_data.to_csv(output_file, index=False)
+
+        try:
+            historical_data[BaseColumns.Date] = historical_data[BaseColumns.Date].str.replace(' 00:00:00', '')
+        except:
+            pass
+            #Instrumentation.info(f"Warning: Couldn't remove timestamp")
 
         historical_data[BaseColumns.Date] = pd.to_datetime(historical_data[BaseColumns.Date], format="%Y-%m-%d")
         

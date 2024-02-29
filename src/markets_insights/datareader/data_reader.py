@@ -222,6 +222,15 @@ class DataReader:
         )
 
 
+def get_date_criteria_based_reader(reader: DataReader, criteria: ReaderDateCriteria) -> DataReader:
+    if isinstance(criteria, DateRangeCriteria) and not isinstance(reader, DateRangeDataReader):
+        return DateRangeDataReader(reader)
+    elif isinstance(criteria, MultiDatesCriteria) and not isinstance(reader, MultiDatesDataReader):
+        return MultiDatesDataReader(reader)
+    else:
+        return reader
+
+
 class ArithmaticOpReader(DataReader):
     def __init__(self, left: DataReader, right: DataReader, operator, op_symbol: str):
         super().__init__()
@@ -235,8 +244,8 @@ class ArithmaticOpReader(DataReader):
         self.name = f"{left.name}{op_symbol}{right.name}"
 
     def read(self, criteria: ReaderDateCriteria) -> pd.DataFrame:
-        l_data = self.l_reader.read(criteria)
-        r_data = self.r_reader.read(criteria)
+        l_data = get_date_criteria_based_reader(self.l_reader, criteria).read(criteria)
+        r_data = get_date_criteria_based_reader(self.r_reader, criteria).read(criteria)
         if not (l_data.empty or r_data.empty):
             on_cols = [BaseColumns.Identifier, BaseColumns.Date]
             prefix_l = self.l_reader.col_prefix
@@ -443,13 +452,14 @@ class NseIndexFuturesDataReader(NseDerivatiesReader):
     
     def sanitize_data(self, data: pd.DataFrame):
         mapping = {
-            "NIFTY": "Nifty 50",
-            "BANKNIFTY": "Nifty Bank",
-            "FINNIFTY": "Nifty Financial Services",
+            "NIFTY": "NIFTY 50",
+            "BANKNIFTY": "NIFTY BANK",
+            "FINNIFTY": "NIFTY FINANCIAL SERVICES",
         }
         data[BaseColumns.Identifier] = data[BaseColumns.Identifier].replace(mapping)
         return data
-    
+
+
 class NseDerivatiesOldReader(NseDerivatiesReaderBase):
     def __init__(self):
         super().__init__()
@@ -495,6 +505,36 @@ class NseDerivatiesOldReader(NseDerivatiesReaderBase):
         }
 
 
+class NseIndexOptionsDataReader(NseDerivatiesReader):
+    def __init__(self):
+        super().__init__()
+        self.name = "nse_optidx"
+        self.col_prefix = "Option-"
+
+    def read(self, criteria: ForDateCriteria) -> pd.DataFrame:
+        data: pd.DataFrame = super().read_data(criteria.for_date)
+        return data.query(str(InstrumentTypeFilter("OPTIDX")))
+    
+    def sanitize_data(self, data: pd.DataFrame):
+        mapping = {
+            "NIFTY": "Nifty 50",
+            "BANKNIFTY": "Nifty Bank",
+            "FINNIFTY": "Nifty Financial Services",
+        }
+        data[BaseColumns.Identifier] = data[BaseColumns.Identifier].replace(mapping)
+        return data
+
+
+class NseEquityOptionsDataReader(NseDerivatiesReader):
+    def __init__(self):
+        super().__init__()
+        self.name = "nse_optstk"
+        self.col_prefix = "Option-"
+
+    def read(self, criteria: ForDateCriteria) -> pd.DataFrame:
+        data: pd.DataFrame = super().read_data(criteria.for_date)
+        return data.query(str(InstrumentTypeFilter("OPTSTK")))
+
 class MultiDatesDataReader(DataReader):
     reader: DataReader
 
@@ -537,7 +577,7 @@ class DateRangeDataReader(DataReader):
 
     def read(self, criteria: ReaderDateCriteria):
         if not isinstance(criteria, ReaderDateCriteria):
-            raise Exception("MultiDatesDataReader.read() expects ReaderDateCriteria")
+            raise Exception("DateRangeDataReader.read() expects ReaderDateCriteria")
         
         datelist = MarketDaysHelper.get_days_list_for_range(criteria.from_date, criteria.to_date)
         result = None

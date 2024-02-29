@@ -109,7 +109,7 @@ def test_historical_data_processor_annual_aggregration():
 def test_historical_data_processor_with_filter():
     processor = HistoricalDataProcessor()
     result = processor.process(
-        NseIndicesReader().set_filter(IdentifierFilter("NIFTY 50")),
+        NseIndicesReader().set_filter(Presets.filters.nifty50),
         DateRangeCriteria(Presets.dates.year_start, Presets.dates.year_end),
     )
 

@@ -24,6 +24,8 @@ from markets_insights.datareader.data_reader import (
     BhavCopyReader,
     NseEquityFuturesDataReader,
     NseIndexFuturesDataReader,
+    NseIndexOptionsDataReader,
+    NseEquityOptionsDataReader,
     NseIndicesReader,
     NseDerivatiesReader,
     MultiDatesDataReader,
@@ -41,7 +43,9 @@ from markets_insights.datareader.data_reader import (
         (NseIndicesReader(), 107),
         (NseDerivatiesReader(), 12450),
         (NseEquityFuturesDataReader(), 503),
-        (NseIndexFuturesDataReader(), 12)
+        (NseIndexFuturesDataReader(), 12),
+        (NseIndexOptionsDataReader(), 4795),
+        (NseEquityOptionsDataReader(), 9867)
     ],
 )
 def test_single_day_reader(reader: DataReader, rows: int):

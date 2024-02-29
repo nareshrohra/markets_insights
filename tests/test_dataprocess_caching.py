@@ -34,7 +34,7 @@ setup()
 
 @pytest.mark.parametrize("identifier,unique_ids_count",
     [
-        ("NIFTY 50", 1),
+        ("Nifty 50", 1),
         (None, 108)        
     ]
 )

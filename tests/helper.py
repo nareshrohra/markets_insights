@@ -51,7 +51,7 @@ class PresetDates:
 
 
 class PresetFilters:
-    nifty50 = IdentifierFilter("NIFTY 50")
+    nifty50 = IdentifierFilter("Nifty 50")
     date_year_end = DateFilter(PresetDates.year_end)
     year = DatePartsFilter(year=2023)
 
