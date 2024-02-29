@@ -81,7 +81,7 @@ def test_historical_data_processor_monthly_aggregration():
             BaseColumns.High: 21801.45,
             BaseColumns.Low: 20183.7,
             BaseColumns.Close: 21731.4,
-            BaseColumns.Turnover: 5752296300000.0,
+            BaseColumns.Turnover: 5752296300000,
         },
     )
 
@@ -102,14 +102,14 @@ def test_historical_data_processor_annual_aggregration():
             BaseColumns.High: 21801.45,
             BaseColumns.Low: 16828.35,
             BaseColumns.Close: 21731.4,
-            BaseColumns.Turnover: 58193576700000.0,
+            BaseColumns.Turnover: 58075646100000,
         },
     )
 
 def test_historical_data_processor_with_filter():
     processor = HistoricalDataProcessor()
     result = processor.process(
-        NseIndicesReader().set_filter(IdentifierFilter("Nifty 50")),
+        NseIndicesReader().set_filter(IdentifierFilter("NIFTY 50")),
         DateRangeCriteria(Presets.dates.year_start, Presets.dates.year_end),
     )
 

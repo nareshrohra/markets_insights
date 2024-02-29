@@ -297,6 +297,7 @@ class BhavCopyReader(DataReader):
         self.name = "nse_equities"
         self.col_prefix = "Cash-"
         __base_url = "https://archives.nseindia.com/content/historical/EQUITIES/"
+        self.options.cutoff_date = date.fromisoformat("2016-01-01")
         self.options.url_template = Template(
             __base_url + "$year/$month/$download_filename"
         )

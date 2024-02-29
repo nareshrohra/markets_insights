@@ -30,21 +30,22 @@ from markets_insights.dataprocess.data_processor import (
     CalculationPipelineBuilder,
     HistoricalDataProcessor,
     HistoricalDataset,
+    HistoricalDataProcessOptions,
     MultiDataCalculationPipelines,
 )
 
-indices_processor = HistoricalDataProcessor()
+options = HistoricalDataProcessOptions(include_annual_data=False, include_monthly_data=False)
+indices_processor = HistoricalDataProcessor(options)
 indices_result: HistoricalDataset = indices_processor.process(
     NseIndicesReader(),
     DateRangeCriteria(Presets.dates.year_start, Presets.dates.year_end),
 )
 
-equity_processor = HistoricalDataProcessor()
+equity_processor = HistoricalDataProcessor(options)
 equity_result: HistoricalDataset = equity_processor.process(
     BhavCopyReader(),
     DateRangeCriteria(Presets.dates.q4_start, Presets.dates.q4_end),
 )
-
 
 def test_calculations_rsi():
     # Prepare calculation pipeline

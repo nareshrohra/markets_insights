@@ -15,24 +15,26 @@ from markets_insights.dataprocess.data_processor import (
     HistoricalDataset,
 )
 
-data_folder_path = os.path.join(os.getcwd(), 'data')
-
-def clean_data_folder():
-    shutil.rmtree(data_folder_path)
-
-if os.path.isdir(data_folder_path):
-    clean_data_folder()
-else:
-    os.mkdir(data_folder_path)
-
 old_path = EnvironmentSettings.Paths["DataBaseDir"]
-Environment.setup(cache_data_base_path=data_folder_path)
+
+def clear_output_folder():
+    data_folder_path = os.path.join(os.getcwd(), 'data')
+
+    def clean_data_folder():
+        shutil.rmtree(data_folder_path)
+
+    if os.path.isdir(data_folder_path):
+        clean_data_folder()
+    else:
+        os.mkdir(data_folder_path)
+
+    Environment.setup(cache_data_base_path=data_folder_path)
 
 setup()
 
 @pytest.mark.parametrize("identifier,unique_ids_count",
     [
-        ("Nifty 50", 1),
+        ("NIFTY 50", 1),
         (None, 108)        
     ]
 )

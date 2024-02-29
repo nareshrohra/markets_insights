@@ -46,7 +46,9 @@ class DataProcessor:
         return Exception("Not implemented!")
 
     def remove_unnamed_columns(self, data: pd.DataFrame) -> pd.DataFrame:
-        return data.loc[:, ~data.columns.str.match("Unnamed")]
+        unnamed_cols = [col for col in data.columns if "Unnamed" in col]
+        if len(unnamed_cols):
+            data.drop(columns=unnamed_cols, inplace=True)
 
 
 class ManualDataProcessor(DataProcessor):
@@ -216,22 +218,6 @@ class HistoricalDataset:
     _monthly: pd.DataFrame = None
     _annual: pd.DataFrame = None
 
-    def sanitize_data(self):
-        self._daily[BaseColumns.High] = pd.to_numeric(
-            self._daily[BaseColumns.High].replace("-", None)
-        )
-        self._daily[BaseColumns.Low] = pd.to_numeric(
-            self._daily[BaseColumns.Low].replace("-", None)
-        )
-
-        self._daily[BaseColumns.High].fillna(
-            self._daily[BaseColumns.Close], inplace=True
-        )
-        self._daily[BaseColumns.Low].fillna(
-            self._daily[BaseColumns.Close], inplace=True
-        )
-        return self
-
     def create_identifier_grouped(self):
         self._identifier_grouped = self.create_grouped_data(BaseColumns.Identifier)
         return self
@@ -262,12 +248,6 @@ class HistoricalDataset:
 
     def get_annual_data(self) -> pd.DataFrame:
         return self._annual
-
-    def process(self):
-        self.sanitize_data()
-        self.create_grouped_data()
-        return self
-
 
 class HistoricalDataProcessOptions:
     def __init__(
@@ -301,70 +281,75 @@ class HistoricalDataProcessor(DataProcessor):
         if daily_data is not None:
             self.dataset.set_daily_data(daily_data)
 
-    @Instrumentation.trace(name="HistoricalDataProcessor.run_base_calculations")
-    def run_base_calculations(self, daily_data: pd.DataFrame):
-        if not BaseColumns.PreviousClose in daily_data.columns:
-            daily_data[BaseColumns.PreviousClose] = daily_data.groupby(
+
+    @Instrumentation.trace(name="HistoricalDataProcessor.sanitize_data")
+    def sanitize_data(self, data: pd.DataFrame):
+        self.remove_unnamed_columns(data)
+        
+        data[BaseColumns.Identifier] = data[
+            BaseColumns.Identifier
+        ].str.upper()
+
+        if not BaseColumns.PreviousClose in data.columns:
+            data[BaseColumns.PreviousClose] = data.groupby(
                 BaseColumns.Identifier
             )[BaseColumns.Close].transform(lambda x: x.shift(-1))
         for col_name in [BaseColumns.Open, BaseColumns.High, BaseColumns.Low]:
-            daily_data[col_name] = daily_data.apply(
+            data[col_name] = data.apply(
                 lambda x: x[col_name]
                 if str(x[col_name]).replace(".", "").isnumeric() == True
                 else x[BaseColumns.Close],
                 axis=1,
             )
-            daily_data[col_name] = daily_data[col_name].astype(float)
+            data[col_name] = data[col_name].astype(float)
+        
+        for missing_col in [col for col in [BaseColumns.Volume, BaseColumns.Turnover] if col not in data.columns]:
+            data[missing_col] = 0
 
     @Instrumentation.trace(name="HistoricalDataProcessor.process")
     def process(self, reader: DataReader, criteria: DateRangeCriteria) -> HistoricalDataset:
         from_date = MarketDaysHelper.get_this_or_next_market_day(criteria.from_date)
         to_date = MarketDaysHelper.get_this_or_previous_market_day(criteria.to_date)
 
-        historical_data = self.get_data(reader, from_date, to_date)
+        daily_data = self.get_data(reader, from_date, to_date)
         manual_data = self.get_manual_data(reader, from_date, to_date)
 
         if manual_data is not None:
-            historical_data = (
-                pd.concat([historical_data, manual_data], ignore_index=True)
+            daily_data = (
+                pd.concat([daily_data, manual_data], ignore_index=True)
                 .reset_index(drop=True)
                 .sort_values(BaseColumns.Date)
             )
 
-        if reader.filter:
-            historical_data = pd.DataFrame(historical_data.query(reader.filter.get_query()))
+        if not daily_data.empty:
+            if reader.filter:
+                daily_data = pd.DataFrame(daily_data.query(reader.filter.get_query()))
 
-        historical_data[BaseColumns.Identifier] = historical_data[
-            BaseColumns.Identifier
-        ].str.upper()
+            self.dataset = HistoricalDataset()
+            self.dataset.set_daily_data(daily_data)
+            self.dataset.create_identifier_grouped()
 
-        self.run_base_calculations(historical_data)
+            output_path = self.output_dir_template.substitute(**EnvironmentSettings.Paths)
 
-        self.dataset = HistoricalDataset()
-        daily_data = self.remove_unnamed_columns(
-            pd.DataFrame(historical_data).reset_index(drop=True)
-        )
+            if self.options.include_monthly_data == True:
+                self.dataset.set_monthly_data(self.add_monthly_growth_calc(daily_data))
+                monthly_data_filename = self.monthly_group_data_filename.substitute(
+                    {**EnvironmentSettings.Paths, "ReaderName": reader.name}
+                )
+                self.dataset.get_monthly_data().to_csv(output_path + monthly_data_filename)
 
-        self.dataset.set_daily_data(daily_data)
-        self.dataset.create_identifier_grouped()
-
-        output_path = self.output_dir_template.substitute(**EnvironmentSettings.Paths)
-
-        if self.options.include_monthly_data == True:
-            self.dataset.set_monthly_data(self.add_monthly_growth_calc(daily_data))
-            monthly_data_filename = self.monthly_group_data_filename.substitute(
-                {**EnvironmentSettings.Paths, "ReaderName": reader.name}
-            )
-            self.dataset.get_monthly_data().to_csv(output_path + monthly_data_filename)
-
-        if self.options.include_annual_data == True:
-            self.dataset.set_annual_data(self.add_yearly_growth_calc(daily_data))
-            annual_data_filename = self.annual_group_data_filename.substitute(
-                {**EnvironmentSettings.Paths, "ReaderName": reader.name}
-            )
-            self.dataset.get_annual_data().to_csv(output_path + annual_data_filename)
+            if self.options.include_annual_data == True:
+                self.dataset.set_annual_data(self.add_yearly_growth_calc(daily_data))
+                annual_data_filename = self.annual_group_data_filename.substitute(
+                    {**EnvironmentSettings.Paths, "ReaderName": reader.name}
+                )
+                self.dataset.get_annual_data().to_csv(output_path + annual_data_filename)
+        else:
+            self.dataset = HistoricalDataset()
+            self.dataset.set_daily_data(daily_data)
 
         return self.dataset
+    
 
     def add_periodic_growth_calc(
         self, processed_data: pd.DataFrame, period: str
@@ -466,9 +451,12 @@ class HistoricalDataProcessor(DataProcessor):
             manual_data[BaseColumns.Date] = pd.to_datetime(
                 manual_data[BaseColumns.Date]
             )
-            return manual_data[
+            manual_data = manual_data[
                 manual_data[BaseColumns.Date].dt.date.between(from_date, to_date)
             ]
+            self.sanitize_data(manual_data)
+
+            return manual_data
         else:
             return None
 
@@ -485,12 +473,15 @@ class HistoricalDataProcessor(DataProcessor):
         if (
             reader.options is not None
             and reader.options.cutoff_date is not None
-            and from_date < reader.options.cutoff_date
         ):
-            Instrumentation.debug(
-                f"Reading from {reader.options.cutoff_date} instead of {from_date}"
-            )
-            from_date = reader.options.cutoff_date
+            if to_date < reader.options.cutoff_date:
+                return pd.DataFrame()
+            
+            if from_date < reader.options.cutoff_date:
+                Instrumentation.debug(
+                    f"Reading from {reader.options.cutoff_date} instead of {from_date}"
+                )
+                from_date = reader.options.cutoff_date
 
         if isinstance(reader, DateRangeDataReader):
             dateRangeReader = reader
@@ -510,6 +501,7 @@ class HistoricalDataProcessor(DataProcessor):
                 historical_data = pd.concat(
                     [historical_data, read_data], ignore_index=True
                 ).reset_index(drop=True)
+                self.sanitize_data(historical_data)
                 save_to_file = True
 
             if latest < to_date:
@@ -519,24 +511,21 @@ class HistoricalDataProcessor(DataProcessor):
                 historical_data = pd.concat(
                     [historical_data, read_data], ignore_index=True
                 ).reset_index(drop=True)
+                self.sanitize_data(historical_data)
                 save_to_file = True
         else:
             Instrumentation.info(f"Reading data from {from_date} to {to_date}")
             historical_data = dateRangeReader.unset_filter().read(DateRangeCriteria(from_date, to_date))
             dateRangeReader.reset_filter()
+            self.sanitize_data(historical_data)
             save_to_file = True
-
-        historical_data[BaseColumns.Date] = pd.to_datetime(
-            historical_data[BaseColumns.Date]
-        )
-
+        
         if save_to_file == True:
             Instrumentation.debug(f"Saving data to file: {output_file}")
-            historical_data = self.remove_unnamed_columns(
-                historical_data.sort_values(BaseColumns.Date)
-            )
             historical_data.to_csv(output_file, index=False)
 
+        historical_data[BaseColumns.Date] = pd.to_datetime(historical_data[BaseColumns.Date], format="%Y-%m-%d")
+        
         historical_data = historical_data[
             historical_data[BaseColumns.Date].dt.date.between(from_date, to_date)
         ]

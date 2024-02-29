@@ -382,10 +382,11 @@ class RsiCalculationWorker(CalculationWorker):
 
     @Instrumentation.trace(name="RsiCalculationWorker")
     def add_calculated_columns(self, data):
-        result = data.groupby(self.get_group_cols(data.columns), group_keys=True).apply(
-            self.calculate_rsi
-        )
-        return result.reset_index(drop=True)
+        if not data.empty:
+            result = data.groupby(self.get_group_cols(data.columns), group_keys=True).apply(
+                self.calculate_rsi
+            )
+            return result.reset_index(drop=True)
 
 
 class StochRsiCalculationWorker(CalculationWorker):
