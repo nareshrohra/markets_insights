@@ -12,12 +12,34 @@ from markets_insights.core.column_definition import (
     BaseColumns,
     CalculatedColumns,
 )
-from markets_insights.datareader.data_reader import DateRangeCriteria, NseIndicesReader
+from markets_insights.datareader.data_reader import DataReader, DateRangeCriteria, MemoryCachedDataReader, NseIndicesReader
 from markets_insights.dataprocess.data_processor import (
     HistoricalDataProcessOptions,
     HistoricalDataProcessor,
     HistoricalDataset,
 )
+
+@pytest.mark.parametrize(
+    "reader,daily_rows,monthly_rows,annual_rows", [
+        ( NseIndicesReader(), 2146, 108, 9 ),
+        ( MemoryCachedDataReader(NseIndicesReader()), 2146, 108, 9 ),
+        ( MemoryCachedDataReader(NseIndicesReader()).set_filter(Presets.filters.nifty50), 20, 12, 1 ),
+    ]
+)
+def test_historical_data_processor_without_options(reader: DataReader, daily_rows: int, monthly_rows: int, annual_rows: int):
+    processor = HistoricalDataProcessor()
+    result: HistoricalDataset = processor.process(
+        reader,
+        DateRangeCriteria(Presets.dates.dec_start, Presets.dates.dec_end),
+    )
+    check_base_cols_present(result.get_daily_data(), "Daily")
+    assert result.get_daily_data().shape[0] == daily_rows
+
+    check_base_cols_present(result.get_monthly_data(), AggregationPeriods.Monthly)
+    assert result.get_monthly_data().shape[0] == monthly_rows
+
+    check_base_cols_present(result.get_annual_data(), AggregationPeriods.Annual)
+    assert result.get_annual_data().shape[0] == annual_rows
 
 
 def test_historical_data_processor_without_options():

@@ -2,7 +2,7 @@ from markets_insights.core.environment import EnvironmentSettings
 import os
 from string import Template
 import pandas as pd
-from markets_insights.datareader.data_reader import DataReader, DateRangeDataReader, DateRangeCriteria
+from markets_insights.datareader.data_reader import DataReader, DateRangeSourceDataReader, DateRangeDataReaderWrapper, DateRangeCriteria
 from markets_insights.core.column_definition import (
     BaseColumns,
     BasePriceColumns,
@@ -49,42 +49,6 @@ class DataProcessor:
         unnamed_cols = [col for col in data.columns if "Unnamed" in col]
         if len(unnamed_cols):
             data.drop(columns=unnamed_cols, inplace=True)
-
-
-class ManualDataProcessor(DataProcessor):
-    @Instrumentation.trace(name="ManualDataProcessor.process")
-    def process(self, reader: DataReader):
-        dir_path = os.path.join(
-            self.manual_data_dir_template.substitute(**EnvironmentSettings.Paths),
-            reader.name,
-        )
-
-        Instrumentation.debug(dir_path)
-        csv_files = glob.glob(os.path.join(dir_path, "*.csv"))
-
-        dfs = []
-        for file in csv_files:
-            df = pd.read_csv(file)
-
-            filename = file.split(os.path.sep)[-1].split(".")[0]
-            column_value = filename.replace("_Data", "")
-
-            df["Identifier"] = column_value
-
-            dfs.append(df)
-
-        final_df = pd.concat(dfs)
-
-        final_df[BaseColumns.Date] = pd.to_datetime(final_df[BaseColumns.Date])
-
-        output_file = os.path.join(
-            self.manual_data_dir_template.substitute(**EnvironmentSettings.Paths),
-            self.filename_template.substitute(**{"ReaderName": reader.name}),
-        )
-
-        final_df.to_csv(output_file, index=False)
-
-        return final_df
 
 
 class CalculationPipelineBuilder:
@@ -282,43 +246,12 @@ class HistoricalDataProcessor(DataProcessor):
             self.dataset.set_daily_data(daily_data)
 
 
-    @Instrumentation.trace(name="HistoricalDataProcessor.sanitize_data")
-    def sanitize_data(self, data: pd.DataFrame):
-        if data.empty:
-            return data
-        
-        self.remove_unnamed_columns(data)
-        
-        if not BaseColumns.PreviousClose in data.columns:
-            data[BaseColumns.PreviousClose] = data.groupby(
-                BaseColumns.Identifier
-            )[BaseColumns.Close].transform(lambda x: x.shift(-1))
-        for col_name in [BaseColumns.Open, BaseColumns.High, BaseColumns.Low]:
-            data[col_name] = data.apply(
-                lambda x: x[col_name]
-                if str(x[col_name]).replace(".", "").isnumeric() == True
-                else x[BaseColumns.Close],
-                axis=1,
-            )
-            data[col_name] = data[col_name].astype(float)
-        
-        for missing_col in [col for col in [BaseColumns.Volume, BaseColumns.Turnover] if col not in data.columns]:
-            data[missing_col] = 0
-
     @Instrumentation.trace(name="HistoricalDataProcessor.process")
     def process(self, reader: DataReader, criteria: DateRangeCriteria) -> HistoricalDataset:
         from_date = MarketDaysHelper.get_this_or_next_market_day(criteria.from_date)
         to_date = MarketDaysHelper.get_this_or_previous_market_day(criteria.to_date)
 
         daily_data = self.get_data(reader, from_date, to_date)
-        manual_data = self.get_manual_data(reader, from_date, to_date)
-
-        if manual_data is not None:
-            daily_data = (
-                pd.concat([daily_data, manual_data], ignore_index=True)
-                .reset_index(drop=True)
-                .sort_values(BaseColumns.Date)
-            )
 
         if not daily_data.empty:
             if reader.filter:
@@ -436,30 +369,6 @@ class HistoricalDataProcessor(DataProcessor):
         if column_name_mappings is not None:
             historical_data.rename(columns=column_name_mappings, inplace=True)
 
-    @Instrumentation.trace(name="HistoricalDataProcessor.get_manual_data")
-    def get_manual_data(
-        self, reader: DataReader, from_date: date, to_date: date
-    ):
-        manual_data_file = os.path.join(
-            self.manual_data_dir_template.substitute(**EnvironmentSettings.Paths),
-            self.filename_template.substitute(**{"ReaderName": reader.name}),
-        )
-
-        if os.path.exists(manual_data_file):
-            manual_data = pd.read_csv(manual_data_file)
-            manual_data[BaseColumns.Date] = pd.to_datetime(
-                manual_data[BaseColumns.Date]
-            )
-            manual_data = manual_data[
-                manual_data[BaseColumns.Date].dt.date.between(from_date, to_date)
-            ]
-
-            self.sanitize_data(manual_data)
-
-            return manual_data
-        else:
-            return None
-
     @Instrumentation.trace(name="HistoricalDataProcessor.get_data")
     def get_data(
         self, reader: DataReader, from_date: date, to_date: date
@@ -470,70 +379,29 @@ class HistoricalDataProcessor(DataProcessor):
             self.filename_template.substitute(**{"ReaderName": reader.name}),
         )
 
-        if (
-            reader.options is not None
-            and reader.options.cutoff_date is not None
-        ):
-            if to_date < reader.options.cutoff_date:
-                return pd.DataFrame()
-            
-            if from_date < reader.options.cutoff_date:
-                Instrumentation.debug(
-                    f"Reading from {reader.options.cutoff_date} instead of {from_date}"
-                )
-                from_date = reader.options.cutoff_date
-
-        if isinstance(reader, DateRangeDataReader):
+        if isinstance(reader, DateRangeSourceDataReader):
             dateRangeReader = reader
         else:
-            dateRangeReader = DateRangeDataReader(reader)
+            dateRangeReader = DateRangeDataReaderWrapper(reader)
 
         save_to_file = False
 
-        if os.path.exists(output_file):
-            historical_data = pd.read_csv(output_file)
-            earliest = pd.Timestamp(historical_data[BaseColumns.Date].min()).date()
-            latest = pd.Timestamp(historical_data[BaseColumns.Date].max()).date()
-            if earliest > from_date:
-                Instrumentation.info(f"Reading data from {from_date} to {earliest}")
-                read_data = dateRangeReader.unset_filter().read(DateRangeCriteria(from_date, earliest))
-                dateRangeReader.reset_filter()
-                historical_data = pd.concat(
-                    [historical_data, read_data], ignore_index=True
-                ).reset_index(drop=True)
-                self.sanitize_data(historical_data)
-                save_to_file = True
-
-            if latest < to_date:
-                Instrumentation.info(f"Reading data from {latest} to {to_date}")
-                read_data = dateRangeReader.unset_filter().read(DateRangeCriteria(latest, to_date))
-                dateRangeReader.reset_filter()
-                historical_data = pd.concat(
-                    [historical_data, read_data], ignore_index=True
-                ).reset_index(drop=True)
-                self.sanitize_data(historical_data)
-                save_to_file = True
-        else:
-            Instrumentation.info(f"Reading data from {from_date} to {to_date}")
-            historical_data = dateRangeReader.unset_filter().read(DateRangeCriteria(from_date, to_date))
-            dateRangeReader.reset_filter()
-            self.sanitize_data(historical_data)
-            save_to_file = True
+        Instrumentation.info(f"Reading data from {from_date} to {to_date}")
+        read_data = dateRangeReader.read(DateRangeCriteria(from_date, to_date))
         
         if save_to_file == True:
             Instrumentation.debug(f"Saving data to file: {output_file}")
-            historical_data.to_csv(output_file, index=False)
+            read_data.to_csv(output_file, index=False)
 
         try:
-            historical_data[BaseColumns.Date] = historical_data[BaseColumns.Date].str.replace(' 00:00:00', '')
+            read_data[BaseColumns.Date] = read_data[BaseColumns.Date].str.replace(' 00:00:00', '')
         except:
             pass
-            #Instrumentation.info(f"Warning: Couldn't remove timestamp")
 
-        historical_data[BaseColumns.Date] = pd.to_datetime(historical_data[BaseColumns.Date], format="%Y-%m-%d")
+        read_data[BaseColumns.Date] = pd.to_datetime(read_data[BaseColumns.Date], format="%Y-%m-%d")
         
-        historical_data = historical_data[
-            historical_data[BaseColumns.Date].dt.date.between(from_date, to_date)
+        read_data = read_data[
+            read_data[BaseColumns.Date].dt.date.between(from_date, to_date)
         ]
         
-        return historical_data
+        return read_data

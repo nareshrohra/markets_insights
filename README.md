@@ -32,12 +32,10 @@ import datetime
 
 reader = data_reader.NseIndicesReader()
 
-daterange_reader = data_reader.DateRangeDataReader(reader)
-
 from_date = datetime.date(2023, 1, 1)
 to_date = datetime.date(2023, 12, 31)
-result = daterange_reader.read(data_reader.DateRangeCriteria(from_date, to_date))
-result.head(3).to_markdown()
+result = reader.read(data_reader.DateRangeCriteria(from_date, to_date))
+result.head(3)
 ```
 
 *Output*
@@ -138,23 +136,28 @@ We perform below steps to prepare our analysis data
 
 ```python
 # import classes
-from markets_insights.datareader.data_reader import BhavCopyReader, DateRangeCriteria
+import datetime
+from markets_insights.datareader import data_reader
+from markets_insights.dataprocess import data_processor
 
 # Fetch the data
-year_start = datetime.date(2023, 1, 1)
+reader = data_reader.BhavCopyReader()
+options = data_processor.HistoricalDataProcessOptions(include_monthly_data = False, include_annual_data=False)
+histDataProcessor = data_processor.HistoricalDataProcessor(options)
+
+from_date = datetime.date(2023, 12, 1)
 to_date = datetime.date(2023, 12, 31)
-result = histDataProcessor.process(BhavCopyReader(), DateRangeCriteria(year_start, to_date))
+result = histDataProcessor.process(data_reader.BhavCopyReader(), data_reader.DateRangeCriteria(from_date, to_date))
 ```
 
 ```python
 # prepare calculation pipeline
 periods = [1, 7, 15, 30, 45]
 
-pipelines = MultiDataCalculationPipelines()
-pipelines.set_item('rsi', CalculationPipelineBuilder.create_rsi_calculation_pipeline(crossing_above_flag_value = 75, crossing_below_flag_value = 30, window = 14))
-pipelines.set_item('stoch_rsi', CalculationPipelineBuilder.create_stoch_rsi_calculation_pipeline(crossing_above_flag_value = 80, crossing_below_flag_value = 20, window = 14))
-pipelines.set_item('foward_looking_fall', CalculationPipelineBuilder.create_forward_looking_price_fall_pipeline(periods))
-pipelines.set_item('foward_looking_rise', CalculationPipelineBuilder.create_forward_looking_price_rise_pipeline(periods))
+pipelines = data_processor.MultiDataCalculationPipelines()
+pipelines.set_item('rsi', data_processor.CalculationPipelineBuilder.create_rsi_calculation_pipeline(crossing_above_flag_value = 75, crossing_below_flag_value = 30, window = 14))
+pipelines.set_item('foward_looking_fall', data_processor.CalculationPipelineBuilder.create_forward_looking_price_fall_pipeline(periods))
+pipelines.set_item('foward_looking_rise', data_processor.CalculationPipelineBuilder.create_forward_looking_price_rise_pipeline(periods))
 histDataProcessor.set_calculation_pipelines(pipelines=pipelines)
 
 # run the pipeline and show results
@@ -166,8 +169,8 @@ daily_data = result.get_daily_data()
 from markets_insights.core.column_definition import BaseColumns, CalculatedColumns
 
 # get names of fwd looking price column names. Since, these column names are auto-generated there no constants for them
-fwd_looking_price_fall_cols, fwd_looking_price_rise_cols = [x for x in daily_data.columns if 'HighestPercFallInNext' in x], \
-    [x for x in daily_data.columns if 'HighestPercRiseInNext' in x]
+fwd_looking_price_fall_cols, fwd_looking_price_rise_cols = [x for x in daily_data.columns if 'Trough' in x], \
+    [x for x in daily_data.columns if 'Peak' in x]
 ```
 
 #### Show the median price change % for highest price fall whenever the RSI crosses above
@@ -178,11 +181,11 @@ daily_data[
 ```
 *Output*
 ```bat
-HighestPercFallInNext1Days     1.418923
-HighestPercFallInNext7Days     3.771446
-HighestPercFallInNext15Days    4.777241
-HighestPercFallInNext30Days    6.055861
-HighestPercFallInNext45Days    6.785467
+TroughPercInNext1Sessions     1.417302
+TroughPercInNext7Sessions     3.770465
+TroughPercInNext15Sessions    4.783065
+TroughPercInNext30Sessions    6.070147
+TroughPercInNext45Sessions    6.783886
 dtype: float64
 ```
 
@@ -194,26 +197,25 @@ daily_data[
 ```
 *Output*
 ```bat
-HighestPercRiseInNext1Days      3.875000
-HighestPercRiseInNext7Days      7.589087
-HighestPercRiseInNext15Days     9.756772
-HighestPercRiseInNext30Days    13.255317
-HighestPercRiseInNext45Days    16.292135
+PeakPercInNext1Sessions      3.876428
+PeakPercInNext7Sessions      7.600800
+PeakPercInNext15Sessions     9.780681
+PeakPercInNext30Sessions    13.269178
+PeakPercInNext45Sessions    16.275638
 dtype: float64
 ```
 
 ### Performing Arithmetic on Readers
 ```python
-from markets_insights.core.core import InstrumentTypeFilter
-from markets_insights.datareader.data_reader import BhavCopyReader, NseDerivatiesReader, NseIndicesReader
+from markets_insights.datareader import data_reader
 from markets_insights.core.core import IdentifierFilter
 
-for_date = datetime.date(2023, 12, 5)
-indices_reader = NseIndicesReader()
-vix_reader = NseIndicesReader().set_filter(IdentifierFilter("India VIX"))
+date_criteria = data_reader.DateRangeCriteria(datetime.date(2023, 1, 1), datetime.date(2023, 12, 31))
+
+indices_reader = data_reader.NseIndicesReader()
+vix_reader = data_reader.NseIndicesReader().set_filter(IdentifierFilter("India VIX"))
 op_reader = indices_reader / vix_reader
-data = op_reader.read(ForDateCriteria(for_date)).query(str(IdentifierFilter("Nifty 50 / India VIX")))
-data.head(3)
+data = op_reader.read(date_criteria).query(str(IdentifierFilter("Nifty 50 / India VIX")))
 ```
 
 *Output*
@@ -236,7 +238,7 @@ import pandas
 We will create a class that extends the base reader. yfinance library can read data for a range. So, we will extend *DateRangeDataReader* class. With yfinance library, we have to specify which equity/tickers we want to download. For the sake of this example, we will download for top 7 companies of Nasdaq.
 
 ```python
-class NasdaqDataReader (DateRangeDataReader):
+class NasdaqDataReader (DateRangeSourceDataReader):
   def __init__(self, tickers: list = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'TSLA', 'NVDA']):
     super().__init__(reader=None)
     self.tickers = tickers

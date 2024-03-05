@@ -15,7 +15,7 @@ import os
 from string import Template
 import pandas as pd
 from urllib.error import HTTPError
-from datetime import date
+from datetime import date, timedelta
 
 from markets_insights.core.core import (
     FilterBase,
@@ -25,17 +25,12 @@ from markets_insights.core.core import (
     TypeHelper,
 )
 
-
-class ReaderOptions:
-    filename = Template("")
-    url_template = Template("")
-    output_path_template = Template("")
-    unzip_path_template = Template("")
-    primary_data_path_template = Template("")
-    unzip_file = True
-    cutoff_date = None
-
-    download_timeout = 5  # seconds
+from enum import Enum
+class Status(Enum):
+    NONE: int = 0
+    PARTIAL: int = 1
+    COMPLETE: int = 2
+    UKNOWN: int = 3
 
 
 class ReaderDateCriteria:
@@ -57,17 +52,87 @@ class MultiDatesCriteria(ReaderDateCriteria):
     for_dates: list[date]
 
 
+@dataclass(init=False)
+class ReaderDataAvailibility:
+    from_date: date = None
+    till_date: date = None
+
+    def __init__(self, from_date: date = date(1900, 1, 1), till_date: date = date.today()):
+        self.from_date = from_date
+        self.till_date = till_date
+
+
+@dataclass
+class ReaderDataAvailibilityStatus:
+    status: int
+    unavailibility_ranges: list[DateRangeCriteria] = None
+
+
+class ReaderOptions:
+    filename = Template("")
+    url_template = Template("")
+    output_path_template = Template("")
+    unzip_path_template = Template("")
+    primary_data_path_template = Template("")
+    unzip_file: bool = True
+    data_availibility: ReaderDataAvailibility = None
+    download_timeout = 5  # seconds
+    col_prefix = None
+
+@dataclass
+class ReaderRescaleOptions:
+    volume_scale: int = 1
+    turnover_scale: int = 1
+
+def get_safe_min_date(for_date) -> date:
+    return for_date if for_date is not None else date(1900, 1, 1)
+
+
+def get_safe_max_date(for_date) -> date:
+    return for_date if for_date is not None else date.today()
+
+
 class DataReader:
     options: ReaderOptions
 
     def __init__(self):
-        self.options = ReaderOptions()
-        self.volume_scale: int = 1
-        self.turnover_scale: int = 1
-        self.filter = None
-        self.name = ""
-        self.col_prefix = None
-        self.skip_filter = False
+        self.options: ReaderOptions = ReaderOptions()
+        self.rescale_options: ReaderRescaleOptions = ReaderRescaleOptions()
+        self.name: str = ""
+        self.filter: FilterBase = None
+
+    def date_is_between_availibility(self, for_date) -> bool:
+        return get_safe_min_date(self.options.data_availibility.from_date) <= for_date <= get_safe_max_date(self.options.data_availibility.till_date)
+
+    def has_data(self, criteria: ReaderDateCriteria) -> ReaderDataAvailibilityStatus:
+        if self.options.data_availibility:
+            if isinstance(criteria, ForDateCriteria):
+                if self.date_is_between_availibility(criteria.for_date):
+                    return ReaderDataAvailibilityStatus(status=Status.COMPLETE)
+                else:
+                    return ReaderDataAvailibilityStatus(status=Status.NONE)
+            elif isinstance(criteria, DateRangeCriteria):
+                availibility_status = ReaderDataAvailibilityStatus(status=Status.NONE)
+                availibility_status.unavailibility_ranges = []
+                from_date, to_date = MarketDaysHelper.get_this_or_next_market_day(criteria.from_date), MarketDaysHelper.get_this_or_previous_market_day(criteria.to_date)
+
+                if self.options.data_availibility.from_date > from_date or self.options.data_availibility.till_date < from_date:
+                    availibility_status.status = Status.NONE
+                    availibility_status.unavailibility_ranges.append(criteria)
+                elif self.options.data_availibility.from_date <= from_date and self.options.data_availibility.till_date >= to_date:
+                    availibility_status.status = Status.COMPLETE
+                else:
+                    if self.options.data_availibility.from_date > from_date:
+                        availibility_status.unavailibility_ranges.append((from_date, self.options.data_availibility.from_date - timedelta(days=1)))
+                    if self.options.data_availibility.till_date < from_date:
+                        availibility_status.unavailibility_ranges.append((self.options.data_availibility.till_date + timedelta(days=1), to_date))
+                    availibility_status.status = Status.PARTIAL
+                return availibility_status
+            else:
+                return ReaderDataAvailibilityStatus(status=Status.UKNOWN)
+        else:
+            return ReaderDataAvailibilityStatus(status=Status.UKNOWN)
+        
 
     def set_filter(self, filter: FilterBase):
         self.filter = filter
@@ -100,15 +165,22 @@ class DataReader:
         return merged_df
 
     def read(self, criteria: ReaderDateCriteria) -> pd.DataFrame:
-        return self.read_data(criteria.for_date)
+        data = self.read_data(criteria.for_date)
+        return self.post_read_data(data)
     
-    def unset_filter(self):
-        self.skip_filter = True
-        return self
-    
-    def reset_filter(self):
-        self.skip_filter = False
-        return self
+    def post_read_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        column_name_mappings = self.get_column_name_mappings()
+        if column_name_mappings is not None:
+            data.rename(columns=column_name_mappings, inplace=True)
+
+        data.drop_duplicates(inplace=True)
+
+        self.normalise_base_column_values(data)
+        
+        if self.filter:
+            data = data.query(str(self.filter))
+
+        return self.sanitize_data(data)
 
     def read_data(self, for_date: date) -> pd.DataFrame:
         date_parts = self.get_date_parts(for_date)
@@ -138,18 +210,7 @@ class DataReader:
 
         data = self.read_data_from_file(for_date, primary_data_file_path)
 
-        column_name_mappings = self.get_column_name_mappings()
-        if column_name_mappings is not None:
-            data.rename(columns=column_name_mappings, inplace=True)
-
-        data.drop_duplicates(inplace=True)
-
-        self.normalise_base_column_values(data)
-
-        if self.filter and self.skip_filter == False:
-            data = data.query(str(self.filter))
-
-        return self.sanitize_data(data)
+        return data
 
     def normalise_base_column_values(self, data: pd.DataFrame) -> pd.DataFrame:
         for col_name in [BaseColumns.Open, BaseColumns.High, BaseColumns.Low]:
@@ -160,6 +221,11 @@ class DataReader:
                 axis=1,
             )
             data[col_name] = data[col_name].astype(float)
+
+        if not BaseColumns.PreviousClose in data.columns:
+            data[BaseColumns.PreviousClose] = data.groupby(
+                BaseColumns.Identifier
+            )[BaseColumns.Close].transform(lambda x: x.shift(-1))
 
         for col_name in [BaseColumns.Volume, BaseColumns.Turnover]:
             if col_name in data.columns:
@@ -172,10 +238,12 @@ class DataReader:
                     )
                     .astype(float)
                 )
+            else:
+                data[col_name] = 0
 
         for rescaling in [
-            (BaseColumns.Volume, self.volume_scale),
-            (BaseColumns.Turnover, self.turnover_scale),
+            (BaseColumns.Volume, self.rescale_options.volume_scale),
+            (BaseColumns.Turnover, self.rescale_options.turnover_scale),
         ]:
             if rescaling[1] != 1:
                 data[rescaling[0]] = data[rescaling[0]] * rescaling[1]
@@ -223,12 +291,167 @@ class DataReader:
 
 
 def get_date_criteria_based_reader(reader: DataReader, criteria: ReaderDateCriteria) -> DataReader:
-    if isinstance(criteria, DateRangeCriteria) and not isinstance(reader, DateRangeDataReader):
-        return DateRangeDataReader(reader)
+    if isinstance(criteria, DateRangeCriteria) and not isinstance(reader, DateRangeSourceDataReader):
+        return DateRangeDataReaderWrapper(reader)
     elif isinstance(criteria, MultiDatesCriteria) and not isinstance(reader, MultiDatesDataReader):
         return MultiDatesDataReader(reader)
     else:
         return reader
+    
+
+class MultiDatesDataReader(DataReader):
+    reader: DataReader
+
+    def __init__(self, reader: DataReader):
+        super().__init__()
+        self.reader = reader
+        self.name = reader.name
+        self.filter = reader.filter
+        self.options = reader.options
+
+    def read(self, criteria: ReaderDateCriteria):
+        if not isinstance(criteria, MultiDatesCriteria):
+            raise Exception("MultiDatesDataReader.read() expects MultiDatesCriteria")
+        
+        result = None
+        for for_date in criteria.for_dates:
+            if MarketDaysHelper.is_open_for_day(pd.Timestamp(for_date).date()):
+                try:
+                    data = self.reader.read(ForDateCriteria(for_date))
+                    
+                    if result is None:
+                        result = data
+                    else:
+                        if not data.empty:
+                            result = pd.concat(
+                                [result, data], ignore_index=True
+                            ).reset_index(drop=True)
+                except Exception as e:
+                    print(e, for_date.strftime("date(%Y, %m, %d),"))
+
+        return self.post_read_data(result)
+
+
+class SingleDaySourceDataReader(DataReader):
+    pass
+
+
+class DateRangeSourceDataReader(DataReader):
+    pass
+
+class DateRangeDataReaderWrapper(DateRangeSourceDataReader):
+    reader: DataReader
+
+    def __init__(self, reader: DataReader):
+        super().__init__()
+        if reader:
+            self.name = reader.name
+            self.filter = reader.filter
+            self.options = reader.options
+            self.reader = reader
+
+    def read(self, criteria: ReaderDateCriteria):
+        if not isinstance(criteria, ReaderDateCriteria):
+            raise Exception("DateRangeDataReader.read() expects ReaderDateCriteria")
+        
+        datelist = MarketDaysHelper.get_days_list_for_range(criteria.from_date, criteria.to_date)
+        result = None
+        for for_date in datelist:
+            if MarketDaysHelper.is_open_for_day(pd.Timestamp(for_date).date()):
+                #try:
+                    data = self.reader.read(ForDateCriteria(for_date))
+                    
+                    if result is None:
+                        result = data
+                    else:
+                        if not data.empty:
+                            result = pd.concat(
+                                [result, data], ignore_index=True
+                            ).reset_index(drop=True)
+                #except Exception as e:
+                #    print(e, for_date.strftime("date(%Y, %m, %d),"))
+
+        return self.post_read_data(result)
+
+    def has_data(self, criteria: ReaderDateCriteria):
+        if self.reader:
+            return self.reader.has_data(criteria)
+        else:
+            return self.has_data()
+
+
+class ChainedDataReader(DateRangeSourceDataReader):
+    def __init__(self, next: DataReader):
+        super().__init__()
+        if not isinstance(next, DateRangeSourceDataReader):
+            self.next = DateRangeDataReaderWrapper(next)
+        else:
+            self.next = next
+    
+    def read(self, criteria: ReaderDateCriteria) -> pd.DataFrame:
+        # check has data for date range
+        availibility: ReaderDataAvailibilityStatus = self.has_data(criteria)
+        
+        if availibility.status == Status.COMPLETE:
+            data = self.read_data(criteria)
+        elif availibility.status == Status.NONE or availibility.status == Status.UKNOWN:
+            data = self.next.read(criteria)
+            self.on_received_more_data(data)
+        elif availibility.status == Status.PARTIAL:
+            available_data = self.read(criteria)
+            unavailable_data = list[pd.DataFrame]
+            
+            for date_range in availibility.unavailibility_ranges:
+                data = self.next.read(date_range)
+                unavailable_data.append(data)
+
+            self.on_received_more_data(unavailable_data)
+            data = pd.concat(unavailable_data.append(available_data)).sort_values(BaseColumns.Date)
+        
+        return self.post_read_data(data)
+    
+    def on_received_more_data(self, data: list[pd.DataFrame]):
+        pass
+
+
+class CachedDataReader(ChainedDataReader):
+    def __init__(self, next: DataReader):
+        super().__init__(next)
+        self.name = next.name
+        self.options.col_prefix = next.options.col_prefix
+    
+    def read_data(self, criteria) -> pd.DataFrame:
+        return self.read_cached_data(criteria)
+    
+    def read_cached_data(self, criteria) -> pd.DataFrame:
+        raise "Not implemented exception"
+    
+    def post_read_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        if self.filter:
+            data = data.query(str(self.filter))
+
+        return data
+
+
+class MemoryCachedDataReader(CachedDataReader):
+    def __init__(self, next: DataReader):
+        super().__init__(next)
+        self.cached_data = pd.DataFrame()
+    
+    def read_cached_data(self, criteria) -> pd.DataFrame:
+        return self.cached_data[
+            self.cached_data[BaseColumns.Date].dt.date.between(criteria.from_date, criteria.to_date)
+        ]
+        
+    def on_received_more_data(self, new_data: pd.DataFrame):
+        existing_data = self.cached_data
+        self.cached_data = pd.concat([existing_data, new_data])
+        
+        self.cached_data.sort_values(BaseColumns.Date)
+        if self.options.data_availibility is None:
+            self.options.data_availibility = ReaderDataAvailibility()
+        self.options.data_availibility.from_date = self.cached_data[BaseColumns.Date].min().date()
+        self.options.data_availibility.till_date = self.cached_data[BaseColumns.Date].max().date()
 
 
 class ArithmaticOpReader(DataReader):
@@ -240,7 +463,7 @@ class ArithmaticOpReader(DataReader):
         self.op_symbol = op_symbol
         self.l_prefix = None
         self.r_prefix = None
-        self.col_prefix = ""
+        self.options.col_prefix = ""
         self.name = f"{left.name}{op_symbol}{right.name}"
 
     def read(self, criteria: ReaderDateCriteria) -> pd.DataFrame:
@@ -248,8 +471,8 @@ class ArithmaticOpReader(DataReader):
         r_data = get_date_criteria_based_reader(self.r_reader, criteria).read(criteria)
         if not (l_data.empty or r_data.empty):
             on_cols = [BaseColumns.Identifier, BaseColumns.Date]
-            prefix_l = self.l_reader.col_prefix
-            prefix_r = self.r_reader.col_prefix
+            prefix_l = self.l_reader.options.col_prefix
+            prefix_r = self.r_reader.options.col_prefix
 
             l_data_unique_id_count = len(l_data[BaseColumns.Identifier].unique())
             r_data_unique_id_count = len(r_data[BaseColumns.Identifier].unique())
@@ -300,13 +523,14 @@ class ArithmaticOpReader(DataReader):
         else:
             return pd.DataFrame()
 
-class BhavCopyReader(DataReader):
+
+class BhavCopyReader(SingleDaySourceDataReader):
     def __init__(self):
         super().__init__()
         self.name = "nse_equities"
-        self.col_prefix = "Cash-"
+        self.options.col_prefix = "Cash-"
         __base_url = "https://archives.nseindia.com/content/historical/EQUITIES/"
-        self.options.cutoff_date = date.fromisoformat("2016-01-01")
+        self.options.data_availibility = ReaderDataAvailibility(from_date=date.fromisoformat("2016-01-01"))
         self.options.url_template = Template(
             __base_url + "$year/$month/$download_filename"
         )
@@ -344,12 +568,13 @@ class BhavCopyReader(DataReader):
         return data[data["SERIES"] == "EQ"].reset_index(drop=True)
 
 
-class NseIndicesReader(DataReader):
+
+class NseIndicesNewReader(SingleDaySourceDataReader):
     def __init__(self):
         super().__init__()
-        self.name = "Indices"
-        self.col_prefix = "Index-"
-        self.turnover_scale = math.pow(10, 7)
+        self.name = "nse_indices"
+        self.options.col_prefix = "index-"
+        self.rescale_options.turnover_scale = math.pow(10, 7)
         __base_url = "https://archives.nseindia.com/content/indices/"
         self.options.unzip_file = False
         self.options.url_template = Template(__base_url + "$download_filename")
@@ -359,9 +584,9 @@ class NseIndicesReader(DataReader):
         self.options.primary_data_path_template = Template(
             "$DataBaseDir/$RawDataDir/$NseIndicesDataDir/$download_filename"
         )
-        self.options.cutoff_date = date.fromisoformat("2013-01-01")
+        self.options.data_availibility = ReaderDataAvailibility(from_date=date.fromisoformat("2013-01-01"))
 
-    def get_filenames(self, for_date):
+    def get_filenames(self, for_date: date):
         __formatted_date = for_date.strftime("%d%m%Y").upper()
         return {
             "download_filename": f"ind_close_all_{__formatted_date}.csv",
@@ -380,7 +605,11 @@ class NseIndicesReader(DataReader):
         }
 
 
-class NseDerivatiesReaderBase(DataReader):
+class NseDerivatiesReaderBase(SingleDaySourceDataReader):
+    def __init__(self):
+        super().__init__()
+        self.options.data_availibility = ReaderDataAvailibility(from_date=date(2016, 1, 1))
+
     def sanitize_data(self, data):
         return data[data["OpenInterest"] > 0].reset_index(drop=True)
 
@@ -388,9 +617,9 @@ class NseDerivatiesReaderBase(DataReader):
 class NseDerivatiesReader(NseDerivatiesReaderBase):
     def __init__(self):
         super().__init__()
-        self.name = "Derivatives"
-        self.col_prefix = "FO-"
-        self.turnover_scale = math.pow(10, 7)
+        self.name = "nse_derivatives"
+        self.options.col_prefix = "FO-"
+        self.rescale_options.turnover_scale = math.pow(10, 7)
         self.options.unzip_file = False
         __base_url = "https://archives.nseindia.com/content/fo/"
         self.options.url_template = Template(__base_url + "$download_filename")
@@ -432,40 +661,16 @@ class NseEquityFuturesDataReader(NseDerivatiesReader):
     def __init__(self):
         super().__init__()
         self.name = "nse_futstk"
-        self.col_prefix = "Futures-"
-    
-
-    def read(self, criteria: ReaderDateCriteria) -> pd.DataFrame:
-        data: pd.DataFrame = super().read_data(criteria.for_date)
-        return data.query(str(InstrumentTypeFilter("FUTSTK")))
-
-
-class NseIndexFuturesDataReader(NseDerivatiesReader):
-    def __init__(self):
-        super().__init__()
-        self.name = "nse_futidx"
-        self.col_prefix = "Futures-"
-
-    def read(self, criteria: ReaderDateCriteria) -> pd.DataFrame:
-        data: pd.DataFrame = super().read_data(criteria.for_date)
-        return data.query(str(InstrumentTypeFilter("FUTIDX")))
-    
-    def sanitize_data(self, data: pd.DataFrame):
-        mapping = {
-            "NIFTY": "NIFTY 50",
-            "BANKNIFTY": "NIFTY BANK",
-            "FINNIFTY": "NIFTY FINANCIAL SERVICES",
-        }
-        data[BaseColumns.Identifier] = data[BaseColumns.Identifier].replace(mapping)
-        return data
+        self.options.col_prefix = "Futures-"
+        self.set_filter(InstrumentTypeFilter("FUTSTK"))
 
 
 class NseDerivatiesOldReader(NseDerivatiesReaderBase):
     def __init__(self):
         super().__init__()
         self.name = "Derivatives"
-        self.col_prefix = "FO-"
-        self.turnover_scale = math.pow(10, 7)
+        self.options.col_prefix = "FO-"
+        self.rescale_options.turnover_scale = math.pow(10, 7)
         __base_url = "https://archives.nseindia.com/content/historical/DERIVATIVES/"
         self.options.url_template = Template(
             __base_url + "$year/$month/$download_filename"
@@ -505,15 +710,13 @@ class NseDerivatiesOldReader(NseDerivatiesReaderBase):
         }
 
 
-class NseIndexOptionsDataReader(NseDerivatiesReader):
+class NseIndexFuturesDataReader(NseDerivatiesReader):
     def __init__(self):
         super().__init__()
-        self.name = "nse_optidx"
-        self.col_prefix = "Option-"
-
-    def read(self, criteria: ForDateCriteria) -> pd.DataFrame:
-        data: pd.DataFrame = super().read_data(criteria.for_date)
-        return data.query(str(InstrumentTypeFilter("OPTIDX")))
+        self.name = "nse_futidx"
+        self.options.col_prefix = "Futures-"
+        self.set_filter(InstrumentTypeFilter("FUTIDX"))
+        
     
     def sanitize_data(self, data: pd.DataFrame):
         mapping = {
@@ -521,7 +724,24 @@ class NseIndexOptionsDataReader(NseDerivatiesReader):
             "BANKNIFTY": "Nifty Bank",
             "FINNIFTY": "Nifty Financial Services",
         }
-        data[BaseColumns.Identifier] = data[BaseColumns.Identifier].replace(mapping)
+        data.loc[data.index, BaseColumns.Identifier] = data[BaseColumns.Identifier].replace(mapping)
+        return data
+
+
+class NseIndexOptionsDataReader(NseDerivatiesReader):
+    def __init__(self):
+        super().__init__()
+        self.name = "nse_optidx"
+        self.options.col_prefix = "Option-"
+        self.set_filter(InstrumentTypeFilter("OPTIDX"))
+    
+    def sanitize_data(self, data: pd.DataFrame):
+        mapping = {
+            "NIFTY": "Nifty 50",
+            "BANKNIFTY": "Nifty Bank",
+            "FINNIFTY": "Nifty Financial Services",
+        }
+        data.loc[data.index, BaseColumns.Identifier] = data[BaseColumns.Identifier].replace(mapping)
         return data
 
 
@@ -529,75 +749,50 @@ class NseEquityOptionsDataReader(NseDerivatiesReader):
     def __init__(self):
         super().__init__()
         self.name = "nse_optstk"
-        self.col_prefix = "Option-"
+        self.options.col_prefix = "Option-"
+        self.set_filter(InstrumentTypeFilter("OPTSTK"))
 
-    def read(self, criteria: ForDateCriteria) -> pd.DataFrame:
-        data: pd.DataFrame = super().read_data(criteria.for_date)
-        return data.query(str(InstrumentTypeFilter("OPTSTK")))
 
-class MultiDatesDataReader(DataReader):
-    reader: DataReader
+class NseIndicesManualDataReader(DateRangeSourceDataReader):
+    output_dir_template = Template("")
+    filename_template = Template("$ReaderName.csv")
+    data_dir_template = Template("$ManualDataPath")
 
-    def __init__(self, reader: DataReader):
+    def __init__(self):
         super().__init__()
-        self.reader = reader
+        self.name = "nse_indices"
+        self.options.col_prefix = "index-"
+        self.options.data_availibility = ReaderDataAvailibility(from_date=date(1990, 7, 3), till_date=date(2012, 12, 31))
 
-    def read(self, criteria: ReaderDateCriteria):
-        if not isinstance(criteria, MultiDatesCriteria):
-            raise Exception("MultiDatesDataReader.read() expects MultiDatesCriteria")
-        
-        result = None
-        for for_date in criteria.for_dates:
-            if MarketDaysHelper.is_open_for_day(pd.Timestamp(for_date).date()):
-                try:
-                    if self.skip_filter:
-                        self.reader.unset_filter()
-                    data = self.reader.read(ForDateCriteria(for_date))
-                    self.reader.reset_filter()
+    def read(self, criteria: DateRangeCriteria):
+        data_file = os.path.join(
+            self.data_dir_template.substitute(**EnvironmentSettings.Paths),
+            self.filename_template.substitute(**{"ReaderName": "Indices"}),
+        )
 
-                    if result is None:
-                        result = data
-                    else:
-                        if not data.empty:
-                            result = pd.concat(
-                                [result, data], ignore_index=True
-                            ).reset_index(drop=True)
-                except Exception as e:
-                    print(e, for_date.strftime("date(%Y, %m, %d),"))
-
-        return result
+        if os.path.exists(data_file):
+            data = pd.read_csv(data_file)
+            data[BaseColumns.Date] = pd.to_datetime(
+                data[BaseColumns.Date]
+            )
+            data = data[
+                data[BaseColumns.Date].dt.date.between(criteria.from_date, criteria.to_date)
+            ]
+            
+            return self.post_read_data(data)
+        else:
+            return pd.DataFrame()
 
 
-class DateRangeDataReader(DataReader):
-    reader: DataReader
-
-    def __init__(self, reader: DataReader):
-        super().__init__()
-        self.reader = reader
-
-    def read(self, criteria: ReaderDateCriteria):
-        if not isinstance(criteria, ReaderDateCriteria):
-            raise Exception("DateRangeDataReader.read() expects ReaderDateCriteria")
-        
-        datelist = MarketDaysHelper.get_days_list_for_range(criteria.from_date, criteria.to_date)
-        result = None
-        for for_date in datelist:
-            if MarketDaysHelper.is_open_for_day(pd.Timestamp(for_date).date()):
-                try:
-                    if self.skip_filter:
-                        self.reader.unset_filter()
-
-                    data = self.reader.read(ForDateCriteria(for_date))
-                    self.reader.reset_filter()
-
-                    if result is None:
-                        result = data
-                    else:
-                        if not data.empty:
-                            result = pd.concat(
-                                [result, data], ignore_index=True
-                            ).reset_index(drop=True)
-                except Exception as e:
-                    print(e, for_date.strftime("date(%Y, %m, %d),"))
-
-        return result
+class NseIndicesReader(ChainedDataReader):
+    def __init__(self):
+        super().__init__(NseIndicesManualDataReader())
+        self.name = "nse_indices"
+        self.options.col_prefix = "index-"
+        self.new_reader = DateRangeDataReaderWrapper(NseIndicesNewReader())
+    
+    def read_data(self, criteria: ReaderDateCriteria):
+        return self.new_reader.read(criteria)
+    
+    def has_data(self, criteria: ReaderDateCriteria):
+        return self.new_reader.has_data(criteria)
