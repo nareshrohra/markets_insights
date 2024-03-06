@@ -478,6 +478,23 @@ class HighestPriceInNextNDaysCalculationWorker(CalculationWorker):
         return CalculationWindow(trailing=0, leading=int(self._params['N']))
 
 
+class ColumnGrowthCalculationWorker(CalculationWorker):
+    def __init__(self, value_column: str = BaseColumns.Close):
+        super().__init__(value_column=value_column)
+        self._columns.append(f"{value_column}Growth")
+        self._columns.append(f"{value_column}GrowthPerc")
+
+    @Instrumentation.trace(name="ColumnChangeOverNDaysCalculationWorker")
+    def add_calculated_columns(self, data: pd.DataFrame):
+        identifier_grouped_data = data.groupby(self.get_group_cols(data.columns))
+        data[self._columns[0]] = identifier_grouped_data[self._params["value_column"]].transform(lambda x:
+            x - x.iloc[0]
+        )
+        data[self._columns[1]] = (
+            data[self._columns[0]] / (data[self._params["value_column"]] - data[self._columns[0]]) * 100
+        )
+
+
 class ColumnChangeOverNDaysCalculationWorker(CalculationWorker):
     def __init__(self, value_column: str = BaseColumns.Close, N: int = 0):
         super().__init__(value_column=value_column, N=int(N))

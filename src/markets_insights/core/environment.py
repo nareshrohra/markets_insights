@@ -12,6 +12,7 @@ class EnvironmentSettings:
         "BhavDataDir": "bhavcopy",
         "NseDerivativesDataDir": "nse_derivatives",
         "NseIndicesDataDir": "nse_indices",
+        "ManualDataDir": "manual_data",
         "ManualDataPath": "../manual_data",
     }
     Development = {"InstrumentationLevel": 1 | 2 | 4}
@@ -31,7 +32,7 @@ class Environment:
         if not os.path.exists(cur_path):
             os.mkdir(cur_path)
 
-        for folder in ["RawDataDir", "ProcessedDataDir"]:
+        for folder in ["RawDataDir", "ProcessedDataDir", "ManualDataDir"]:
             cur_path = f"{env_paths['DataBaseDir']}/{env_paths[folder]}"
             if not os.path.exists(cur_path):
                 os.mkdir(cur_path)

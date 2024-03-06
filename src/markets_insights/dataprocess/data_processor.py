@@ -251,7 +251,7 @@ class HistoricalDataProcessor(DataProcessor):
         from_date = MarketDaysHelper.get_this_or_next_market_day(criteria.from_date)
         to_date = MarketDaysHelper.get_this_or_previous_market_day(criteria.to_date)
 
-        daily_data = self.get_data(reader, from_date, to_date)
+        daily_data = pd.DataFrame(self.get_data(reader, from_date, to_date).drop_duplicates())
 
         if not daily_data.empty:
             if reader.filter:

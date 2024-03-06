@@ -116,16 +116,17 @@ class DataReader:
                 availibility_status.unavailibility_ranges = []
                 from_date, to_date = MarketDaysHelper.get_this_or_next_market_day(criteria.from_date), MarketDaysHelper.get_this_or_previous_market_day(criteria.to_date)
 
-                if self.options.data_availibility.from_date > from_date or self.options.data_availibility.till_date < from_date:
+                if (self.options.data_availibility.from_date > from_date and to_date < self.options.data_availibility.from_date) \
+                        or (from_date > self.options.data_availibility.till_date):
                     availibility_status.status = Status.NONE
                     availibility_status.unavailibility_ranges.append(criteria)
                 elif self.options.data_availibility.from_date <= from_date and self.options.data_availibility.till_date >= to_date:
                     availibility_status.status = Status.COMPLETE
                 else:
                     if self.options.data_availibility.from_date > from_date:
-                        availibility_status.unavailibility_ranges.append((from_date, self.options.data_availibility.from_date - timedelta(days=1)))
-                    if self.options.data_availibility.till_date < from_date:
-                        availibility_status.unavailibility_ranges.append((self.options.data_availibility.till_date + timedelta(days=1), to_date))
+                        availibility_status.unavailibility_ranges.append(DateRangeCriteria(from_date, self.options.data_availibility.from_date - timedelta(days=1)))
+                    if self.options.data_availibility.till_date < to_date:
+                        availibility_status.unavailibility_ranges.append(DateRangeCriteria(self.options.data_availibility.till_date + timedelta(days=1), to_date))
                     availibility_status.status = Status.PARTIAL
                 return availibility_status
             else:
@@ -169,18 +170,21 @@ class DataReader:
         return self.post_read_data(data)
     
     def post_read_data(self, data: pd.DataFrame) -> pd.DataFrame:
-        column_name_mappings = self.get_column_name_mappings()
-        if column_name_mappings is not None:
-            data.rename(columns=column_name_mappings, inplace=True)
+        if not (data is None or data.empty):
+            column_name_mappings = self.get_column_name_mappings()
+            if column_name_mappings is not None:
+                data.rename(columns=column_name_mappings, inplace=True)
 
-        data.drop_duplicates(inplace=True)
+            data.drop_duplicates(inplace=True)
 
-        self.normalise_base_column_values(data)
-        
-        if self.filter:
-            data = data.query(str(self.filter))
+            self.normalise_base_column_values(data)
+            
+            if self.filter:
+                data = data.query(str(self.filter))
 
-        return self.sanitize_data(data)
+            return self.sanitize_data(data)
+        else:
+            return data
 
     def read_data(self, for_date: date) -> pd.DataFrame:
         date_parts = self.get_date_parts(for_date)
@@ -222,10 +226,9 @@ class DataReader:
             )
             data[col_name] = data[col_name].astype(float)
 
-        if not BaseColumns.PreviousClose in data.columns:
-            data[BaseColumns.PreviousClose] = data.groupby(
-                BaseColumns.Identifier
-            )[BaseColumns.Close].transform(lambda x: x.shift(-1))
+        data[BaseColumns.PreviousClose] = data.groupby(
+            BaseColumns.Identifier
+        )[BaseColumns.Close].transform(lambda x: x.shift(1))
 
         for col_name in [BaseColumns.Volume, BaseColumns.Turnover]:
             if col_name in data.columns:
@@ -313,13 +316,13 @@ class MultiDatesDataReader(DataReader):
         if not isinstance(criteria, MultiDatesCriteria):
             raise Exception("MultiDatesDataReader.read() expects MultiDatesCriteria")
         
-        result = None
+        result = pd.DataFrame()
         for for_date in criteria.for_dates:
             if MarketDaysHelper.is_open_for_day(pd.Timestamp(for_date).date()):
                 try:
                     data = self.reader.read(ForDateCriteria(for_date))
                     
-                    if result is None:
+                    if result.empty:
                         result = data
                     else:
                         if not data.empty:
@@ -355,21 +358,21 @@ class DateRangeDataReaderWrapper(DateRangeSourceDataReader):
             raise Exception("DateRangeDataReader.read() expects ReaderDateCriteria")
         
         datelist = MarketDaysHelper.get_days_list_for_range(criteria.from_date, criteria.to_date)
-        result = None
+        result = pd.DataFrame()
         for for_date in datelist:
             if MarketDaysHelper.is_open_for_day(pd.Timestamp(for_date).date()):
-                #try:
+                try:
                     data = self.reader.read(ForDateCriteria(for_date))
                     
-                    if result is None:
+                    if result.empty:
                         result = data
                     else:
                         if not data.empty:
                             result = pd.concat(
                                 [result, data], ignore_index=True
                             ).reset_index(drop=True)
-                #except Exception as e:
-                #    print(e, for_date.strftime("date(%Y, %m, %d),"))
+                except Exception as e:
+                    print(e, for_date.strftime("date(%Y, %m, %d),"))
 
         return self.post_read_data(result)
 
@@ -396,17 +399,26 @@ class ChainedDataReader(DateRangeSourceDataReader):
             data = self.read_data(criteria)
         elif availibility.status == Status.NONE or availibility.status == Status.UKNOWN:
             data = self.next.read(criteria)
-            self.on_received_more_data(data)
+            if not data.empty:
+                #data = self.post_read_data(data)
+                self.on_received_more_data(data)
         elif availibility.status == Status.PARTIAL:
-            available_data = self.read(criteria)
-            unavailable_data = list[pd.DataFrame]
+            available_data = self.read_data(criteria)
+            unavailable_data: list[pd.DataFrame] = []
             
             for date_range in availibility.unavailibility_ranges:
                 data = self.next.read(date_range)
-                unavailable_data.append(data)
-
-            self.on_received_more_data(unavailable_data)
-            data = pd.concat(unavailable_data.append(available_data)).sort_values(BaseColumns.Date)
+                if not data.empty:
+                    unavailable_data.append(data)
+            if len(unavailable_data) > 0:
+                all_unavailable_data = pd.concat(unavailable_data).sort_values([BaseColumns.Date])
+                #all_unavailable_data = self.post_read_data(all_unavailable_data)
+                data = pd.concat([all_unavailable_data, available_data])
+                data[BaseColumns.Date] = data[BaseColumns.Date].astype('datetime64[ns]')
+                data = data.sort_values([BaseColumns.Date])
+                self.on_received_more_data(all_unavailable_data)
+            else:
+                data = available_data
         
         return self.post_read_data(data)
     
@@ -427,9 +439,11 @@ class CachedDataReader(ChainedDataReader):
         raise "Not implemented exception"
     
     def post_read_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        data = data[data.columns.drop(list(data.filter(regex='Unnamed')))]
+        data = data.reset_index(drop=True)
+        data = data.drop_duplicates()
         if self.filter:
             data = data.query(str(self.filter))
-
         return data
 
 
@@ -438,7 +452,7 @@ class MemoryCachedDataReader(CachedDataReader):
         super().__init__(next)
         self.cached_data = pd.DataFrame()
     
-    def read_cached_data(self, criteria) -> pd.DataFrame:
+    def read_cached_data(self, criteria: DateRangeCriteria) -> pd.DataFrame:
         return self.cached_data[
             self.cached_data[BaseColumns.Date].dt.date.between(criteria.from_date, criteria.to_date)
         ]
@@ -756,7 +770,7 @@ class NseEquityOptionsDataReader(NseDerivatiesReader):
 class NseIndicesManualDataReader(DateRangeSourceDataReader):
     output_dir_template = Template("")
     filename_template = Template("$ReaderName.csv")
-    data_dir_template = Template("$ManualDataPath")
+    data_dir_template = Template("$DataBaseDir/$ManualDataDir")
 
     def __init__(self):
         super().__init__()

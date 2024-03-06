@@ -4,6 +4,7 @@ import pandas as pd
 
 from helper import check_col_values, setup, Presets
 from markets_insights.calculations.base import (
+    ColumnGrowthCalculationWorker,
     ColumnValueBelowFlagWorker,
     ColumnValueAboveFlagWorker,
     ColumnValueCrossedAboveAnotherColumnValueFlagWorker,
@@ -400,7 +401,7 @@ def test_calculations_price_crossing_above_flag(
         ("INFY", 10, date(2023, 12, 29), 41.45, 2.76066469),
     ],
 )
-def test_calculations_growth(
+def test_calculations_change(
     identifier: str, N: int, for_date: date, value: float, value_perc: float
 ):
     # Prepare calculation pipeline
@@ -428,6 +429,43 @@ def test_calculations_growth(
     )
 
     assert pipelines.get_calculation_window().trailing == N
+
+
+@pytest.mark.parametrize(
+    "identifier,for_date,value,value_perc",
+    [
+        ("RELIANCE", date(2023, 12, 14), 146, 6.298125),
+        ("INFY", date(2023, 12, 29), 108.9, 7.5941422),
+    ],
+)
+def test_calculations_change(
+    identifier: str, for_date: date, value: float, value_perc: float
+):
+    # Prepare calculation pipeline
+    pipelines = MultiDataCalculationPipelines()
+    pipelines.set_item(
+        "growth",
+        CalculationPipelineBuilder.create_pipeline_for_worker(
+            ColumnGrowthCalculationWorker()
+        ),
+    )
+    equity_processor.set_calculation_pipelines(pipelines)
+
+    # Run the pipeline and get data
+    equity_processor.run_calculation_pipelines()
+    daily_data = equity_result.get_daily_data()
+
+    check_col_values(
+        data=daily_data.query(
+            str(IdentifierFilter(identifier) & DateFilter(for_date=for_date))
+        ),
+        col_value_pairs={
+            f"CloseGrowth": value,
+            f"CloseGrowthPerc": value_perc
+        }
+    )
+
+    assert pipelines.get_calculation_window().trailing == 0
 
 
     
