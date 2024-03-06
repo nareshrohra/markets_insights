@@ -65,6 +65,7 @@ class ReaderDataAvailibility:
 @dataclass
 class ReaderDataAvailibilityStatus:
     status: int
+    availibility_ranges: list[DateRangeCriteria] = None
     unavailibility_ranges: list[DateRangeCriteria] = None
 
 
@@ -128,6 +129,11 @@ class DataReader:
                     if self.options.data_availibility.till_date < to_date:
                         availibility_status.unavailibility_ranges.append(DateRangeCriteria(self.options.data_availibility.till_date + timedelta(days=1), to_date))
                     availibility_status.status = Status.PARTIAL
+                    availibility_status.availibility_ranges = [
+                            DateRangeCriteria(
+                                max([self.options.data_availibility.from_date, from_date]),
+                                min([self.options.data_availibility.till_date, to_date])
+                        )]
                 return availibility_status
             else:
                 return ReaderDataAvailibilityStatus(status=Status.UKNOWN)

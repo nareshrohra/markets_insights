@@ -389,19 +389,20 @@ class HistoricalDataProcessor(DataProcessor):
         Instrumentation.info(f"Reading data from {from_date} to {to_date}")
         read_data = dateRangeReader.read(DateRangeCriteria(from_date, to_date))
         
-        if save_to_file == True:
-            Instrumentation.debug(f"Saving data to file: {output_file}")
-            read_data.to_csv(output_file, index=False)
+        if not read_data.empty:
+            if save_to_file == True:
+                Instrumentation.debug(f"Saving data to file: {output_file}")
+                read_data.to_csv(output_file, index=False)
 
-        try:
-            read_data[BaseColumns.Date] = read_data[BaseColumns.Date].str.replace(' 00:00:00', '')
-        except:
-            pass
+            try:
+                read_data[BaseColumns.Date] = read_data[BaseColumns.Date].str.replace(' 00:00:00', '')
+            except:
+                pass
 
-        read_data[BaseColumns.Date] = pd.to_datetime(read_data[BaseColumns.Date], format="%Y-%m-%d")
-        
-        read_data = read_data[
-            read_data[BaseColumns.Date].dt.date.between(from_date, to_date)
-        ]
+            read_data[BaseColumns.Date] = pd.to_datetime(read_data[BaseColumns.Date], format="%Y-%m-%d")
+            
+            read_data = read_data[
+                read_data[BaseColumns.Date].dt.date.between(from_date, to_date)
+            ]
         
         return read_data

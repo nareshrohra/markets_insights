@@ -179,7 +179,7 @@ class FilterCriteria:
     _condition_value = None
 
     def __init__(
-        self, col_to_filter: str = None, condition: str = None, condition_value=None,
+        self, col_to_filter: str = None, condition: str = None, condition_value = None
     ):
         self._col_to_filter = col_to_filter
         self._condition = condition
