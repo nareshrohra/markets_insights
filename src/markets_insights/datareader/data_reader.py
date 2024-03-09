@@ -53,7 +53,7 @@ class MultiDatesCriteria(ReaderDateCriteria):
 
 
 @dataclass(init=False)
-class ReaderDataAvailibility:
+class ReaderDataAvailability:
     from_date: date = None
     till_date: date = None
 
@@ -63,10 +63,10 @@ class ReaderDataAvailibility:
 
 
 @dataclass
-class ReaderDataAvailibilityStatus:
+class ReaderDataAvailabilityStatus:
     status: int
-    availibility_ranges: list[DateRangeCriteria] = None
-    unavailibility_ranges: list[DateRangeCriteria] = None
+    availability_ranges: list[DateRangeCriteria] = None
+    unavailability_ranges: list[DateRangeCriteria] = None
 
 
 class ReaderOptions:
@@ -76,7 +76,7 @@ class ReaderOptions:
     unzip_path_template = Template("")
     primary_data_path_template = Template("")
     unzip_file: bool = True
-    data_availibility: ReaderDataAvailibility = None
+    data_availability: list [DateRangeCriteria] = None
     download_timeout = 5  # seconds
     col_prefix = None
 
@@ -102,44 +102,68 @@ class DataReader:
         self.name: str = ""
         self.filter: FilterBase = None
 
-    def date_is_between_availibility(self, for_date) -> bool:
-        return get_safe_min_date(self.options.data_availibility.from_date) <= for_date <= get_safe_max_date(self.options.data_availibility.till_date)
-
-    def has_data(self, criteria: ReaderDateCriteria) -> ReaderDataAvailibilityStatus:
-        if self.options.data_availibility:
-            if isinstance(criteria, ForDateCriteria):
-                if self.date_is_between_availibility(criteria.for_date):
-                    return ReaderDataAvailibilityStatus(status=Status.COMPLETE)
-                else:
-                    return ReaderDataAvailibilityStatus(status=Status.NONE)
-            elif isinstance(criteria, DateRangeCriteria):
-                availibility_status = ReaderDataAvailibilityStatus(status=Status.NONE)
-                availibility_status.unavailibility_ranges = []
-                from_date, to_date = MarketDaysHelper.get_this_or_next_market_day(criteria.from_date), MarketDaysHelper.get_this_or_previous_market_day(criteria.to_date)
-
-                if (self.options.data_availibility.from_date > from_date and to_date < self.options.data_availibility.from_date) \
-                        or (from_date > self.options.data_availibility.till_date):
-                    availibility_status.status = Status.NONE
-                    availibility_status.unavailibility_ranges.append(criteria)
-                elif self.options.data_availibility.from_date <= from_date and self.options.data_availibility.till_date >= to_date:
-                    availibility_status.status = Status.COMPLETE
-                else:
-                    if self.options.data_availibility.from_date > from_date:
-                        availibility_status.unavailibility_ranges.append(DateRangeCriteria(from_date, self.options.data_availibility.from_date - timedelta(days=1)))
-                    if self.options.data_availibility.till_date < to_date:
-                        availibility_status.unavailibility_ranges.append(DateRangeCriteria(self.options.data_availibility.till_date + timedelta(days=1), to_date))
-                    availibility_status.status = Status.PARTIAL
-                    availibility_status.availibility_ranges = [
-                            DateRangeCriteria(
-                                max([self.options.data_availibility.from_date, from_date]),
-                                min([self.options.data_availibility.till_date, to_date])
-                        )]
-                return availibility_status
+    def merge_intervals(intervals: list[DateRangeCriteria]) -> list[DateRangeCriteria]:
+        merged: list[DateRangeCriteria] = []
+        for interval in intervals:
+            if not merged or merged[-1].to_date + timedelta(days=1) < interval.from_date:
+                merged.append(interval)
             else:
-                return ReaderDataAvailibilityStatus(status=Status.UKNOWN)
-        else:
-            return ReaderDataAvailibilityStatus(status=Status.UKNOWN)
+                merged[-1].to_date = max(merged[-1].to_date, interval.to_date)
+        return merged
+
+    def has_data_for_range(data_availability: list[DateRangeCriteria], criteria: DateRangeCriteria):
+        read_criteria = DateRangeCriteria(MarketDaysHelper.get_this_or_next_market_day(criteria.from_date), MarketDaysHelper.get_this_or_previous_market_day(criteria.to_date))
+
+        # Sort by from_date and merge overlapping intervals
+        data_availability.sort(key=lambda x: x.from_date)
+        data_availability = DataReader.merge_intervals(data_availability)
+
+        availability_ranges = []
+        unavailability_ranges = []
+        last_date_processed = read_criteria.from_date - timedelta(days=1)
         
+        for interval in data_availability:
+            if interval.from_date > read_criteria.to_date:
+                break
+            if interval.to_date < read_criteria.from_date:
+                continue
+            
+            # Handle unavailable range before current interval
+            if interval.from_date > last_date_processed + timedelta(days=1):
+                unavailability_ranges.append(DateRangeCriteria(last_date_processed + timedelta(days=1), interval.from_date - timedelta(days=1)))
+            
+            # Adjust interval to match read_criteria
+            start_date = max(interval.from_date, read_criteria.from_date)
+            end_date = min(interval.to_date, read_criteria.to_date)
+            availability_ranges.append(DateRangeCriteria(start_date, end_date))
+            last_date_processed = max(last_date_processed, interval.to_date)
+
+        # Handle unavailable range after the last interval
+        if last_date_processed < read_criteria.to_date:
+            unavailability_ranges.append(DateRangeCriteria(last_date_processed + timedelta(days=1), read_criteria.to_date))
+        
+        # Determine status
+        if not availability_ranges:
+            status = Status.NONE
+        elif not unavailability_ranges and availability_ranges[0].from_date <= read_criteria.from_date and availability_ranges[-1].to_date >= read_criteria.to_date:
+            status = Status.COMPLETE
+        else:
+            status = Status.PARTIAL
+
+        return ReaderDataAvailabilityStatus(status=status, availability_ranges=availability_ranges, unavailability_ranges=unavailability_ranges)
+
+    def has_data(self, criteria: ReaderDateCriteria) -> ReaderDataAvailabilityStatus:
+        if self.options.data_availability:
+            if isinstance(criteria, ForDateCriteria):
+                status = ReaderDataAvailabilityStatus(status=Status.NONE)
+                for availability_range in self.options.data_availability:
+                    if availability_range.from_date <= criteria.for_date <= availability_range.to_date:
+                        status = ReaderDataAvailabilityStatus(status=Status.COMPLETE, availability_ranges=[DateRangeCriteria(criteria.for_date, criteria.for_date)])
+                return status
+            elif isinstance(criteria, DateRangeCriteria):
+                return DataReader.has_data_for_range(self.options.data_availability, criteria)
+        else:
+            return ReaderDataAvailabilityStatus(status=Status.UKNOWN)        
 
     def set_filter(self, filter: FilterBase):
         self.filter = filter
@@ -399,20 +423,20 @@ class ChainedDataReader(DateRangeSourceDataReader):
     
     def read(self, criteria: ReaderDateCriteria) -> pd.DataFrame:
         # check has data for date range
-        availibility: ReaderDataAvailibilityStatus = self.has_data(criteria)
+        availability: ReaderDataAvailabilityStatus = self.has_data(criteria)
         
-        if availibility.status == Status.COMPLETE:
+        if availability.status == Status.COMPLETE:
             data = self.read_data(criteria)
-        elif availibility.status == Status.NONE or availibility.status == Status.UKNOWN:
+        elif availability.status == Status.NONE or availability.status == Status.UKNOWN:
             data = self.next.read(criteria)
             if not data.empty:
                 #data = self.post_read_data(data)
                 self.on_received_more_data(data)
-        elif availibility.status == Status.PARTIAL:
+        elif availability.status == Status.PARTIAL:
             available_data = self.read_data(criteria)
             unavailable_data: list[pd.DataFrame] = []
             
-            for date_range in availibility.unavailibility_ranges:
+            for date_range in availability.unavailability_ranges:
                 data = self.next.read(date_range)
                 if not data.empty:
                     unavailable_data.append(data)
@@ -468,10 +492,29 @@ class MemoryCachedDataReader(CachedDataReader):
         self.cached_data = pd.concat([existing_data, new_data])
         
         self.cached_data.sort_values(BaseColumns.Date)
-        if self.options.data_availibility is None:
-            self.options.data_availibility = ReaderDataAvailibility()
-        self.options.data_availibility.from_date = self.cached_data[BaseColumns.Date].min().date()
-        self.options.data_availibility.till_date = self.cached_data[BaseColumns.Date].max().date()
+        if self.options.data_availability is None:
+            self.options.data_availability = []
+
+        self.options.data_availability = self.get_data_availability_ranges()
+
+    def get_data_availability_ranges(self):
+        df = pd.DataFrame()
+        df['Date'] = self.cached_data['Date']
+        df['Gap'] = self.cached_data['Date'].diff().dt.days
+
+        df['NewRange'] = df['Gap'] > 4
+
+        df['Group'] = df['NewRange'].cumsum()
+
+        ranges_df = df.groupby('Group')['Date'].agg(['min', 'max']).reset_index(drop=True)
+
+        availability_ranges: list[DateRangeCriteria] = []
+        for index, row in ranges_df.iterrows():
+            availability_ranges.append(DateRangeCriteria(row['min'].date(), row['max'].date()))
+
+        return availability_ranges
+
+
 
 
 class ArithmaticOpReader(DataReader):
@@ -550,7 +593,7 @@ class BhavCopyReader(SingleDaySourceDataReader):
         self.name = "nse_equities"
         self.options.col_prefix = "Cash-"
         __base_url = "https://archives.nseindia.com/content/historical/EQUITIES/"
-        self.options.data_availibility = ReaderDataAvailibility(from_date=date.fromisoformat("2016-01-01"))
+        self.options.data_availability = [DateRangeCriteria(date.fromisoformat("2016-01-01"), date.today())]
         self.options.url_template = Template(
             __base_url + "$year/$month/$download_filename"
         )
@@ -588,7 +631,6 @@ class BhavCopyReader(SingleDaySourceDataReader):
         return data[data["SERIES"] == "EQ"].reset_index(drop=True)
 
 
-
 class NseIndicesNewReader(SingleDaySourceDataReader):
     def __init__(self):
         super().__init__()
@@ -604,7 +646,7 @@ class NseIndicesNewReader(SingleDaySourceDataReader):
         self.options.primary_data_path_template = Template(
             "$DataBaseDir/$RawDataDir/$NseIndicesDataDir/$download_filename"
         )
-        self.options.data_availibility = ReaderDataAvailibility(from_date=date.fromisoformat("2013-01-01"))
+        self.options.data_availability = [DateRangeCriteria(date.fromisoformat("2013-01-01"), date.today())]
 
     def get_filenames(self, for_date: date):
         __formatted_date = for_date.strftime("%d%m%Y").upper()
@@ -628,7 +670,7 @@ class NseIndicesNewReader(SingleDaySourceDataReader):
 class NseDerivatiesReaderBase(SingleDaySourceDataReader):
     def __init__(self):
         super().__init__()
-        self.options.data_availibility = ReaderDataAvailibility(from_date=date(2016, 1, 1))
+        self.options.data_availability = [DateRangeCriteria(date(2016, 1, 1), date.today())]
 
     def sanitize_data(self, data):
         return data[data["OpenInterest"] > 0].reset_index(drop=True)
@@ -782,7 +824,7 @@ class NseIndicesManualDataReader(DateRangeSourceDataReader):
         super().__init__()
         self.name = "nse_indices"
         self.options.col_prefix = "index-"
-        self.options.data_availibility = ReaderDataAvailibility(from_date=date(1990, 7, 3), till_date=date(2012, 12, 31))
+        self.options.data_availability = [DateRangeCriteria(date(1990, 7, 3), date(2012, 12, 31))]
 
     def read(self, criteria: DateRangeCriteria):
         data_file = os.path.join(
