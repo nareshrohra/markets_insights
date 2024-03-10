@@ -138,6 +138,18 @@ test_cases = [
         "expected_available": None,
         "expected_unavailable": None,
     },
+    # Merge Intervals
+    {
+        "test_id": 10,
+        "data_availability": [
+            DateRangeCriteria(date(2019, 1, 1), date(2019, 12, 29)),
+            DateRangeCriteria(date(2020, 1, 2), date(2020, 7, 31)),
+        ],
+        "read_criteria": DateRangeCriteria(date(2019, 1, 1), date(2020, 7, 31)),
+        "expected_status": Status.COMPLETE,
+        "expected_available": [DateRangeCriteria(date(2019, 1, 1), date(2020, 7, 31))],
+        "expected_unavailable": [],
+    },
 ]
 
 @pytest.mark.parametrize(

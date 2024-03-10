@@ -103,19 +103,26 @@ class DataReader:
         self.filter: FilterBase = None
 
     def merge_intervals(intervals: list[DateRangeCriteria]) -> list[DateRangeCriteria]:
-        merged: list[DateRangeCriteria] = []
-        for interval in intervals:
-            if not merged or merged[-1].to_date + timedelta(days=1) < interval.from_date:
-                merged.append(interval)
+        merged_ranges: list[DateRangeCriteria] = []
+        intervals.sort(key=lambda x: x.from_date)
+        for current_range in intervals:
+            if not merged_ranges:
+                merged_ranges.append(current_range)
             else:
-                merged[-1].to_date = max(merged[-1].to_date, interval.to_date)
-        return merged
+                last_range = merged_ranges[-1]
+                if current_range.from_date <= last_range.to_date + timedelta(days=1) or \
+                current_range.from_date - last_range.to_date <= timedelta(days=4):
+                    merged_ranges[-1] = DateRangeCriteria(
+                        from_date=last_range.from_date,
+                        to_date=max(last_range.to_date, current_range.to_date)
+                    )
+                else:
+                    merged_ranges.append(current_range)
+        return merged_ranges
 
     def has_data_for_range(data_availability: list[DateRangeCriteria], criteria: DateRangeCriteria):
         read_criteria = DateRangeCriteria(MarketDaysHelper.get_this_or_next_market_day(criteria.from_date), MarketDaysHelper.get_this_or_previous_market_day(criteria.to_date))
 
-        # Sort by from_date and merge overlapping intervals
-        data_availability.sort(key=lambda x: x.from_date)
         data_availability = DataReader.merge_intervals(data_availability)
 
         availability_ranges = []
@@ -128,21 +135,17 @@ class DataReader:
             if interval.to_date < read_criteria.from_date:
                 continue
             
-            # Handle unavailable range before current interval
             if interval.from_date > last_date_processed + timedelta(days=1):
                 unavailability_ranges.append(DateRangeCriteria(last_date_processed + timedelta(days=1), interval.from_date - timedelta(days=1)))
             
-            # Adjust interval to match read_criteria
             start_date = max(interval.from_date, read_criteria.from_date)
             end_date = min(interval.to_date, read_criteria.to_date)
             availability_ranges.append(DateRangeCriteria(start_date, end_date))
             last_date_processed = max(last_date_processed, interval.to_date)
 
-        # Handle unavailable range after the last interval
         if last_date_processed < read_criteria.to_date:
             unavailability_ranges.append(DateRangeCriteria(last_date_processed + timedelta(days=1), read_criteria.to_date))
         
-        # Determine status
         if not availability_ranges:
             status = Status.NONE
         elif not unavailability_ranges and availability_ranges[0].from_date <= read_criteria.from_date and availability_ranges[-1].to_date >= read_criteria.to_date:
