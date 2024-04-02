@@ -146,6 +146,8 @@ class DataReader:
         if last_date_processed < read_criteria.to_date:
             unavailability_ranges.append(DateRangeCriteria(last_date_processed + timedelta(days=1), read_criteria.to_date))
         
+        unavailability_ranges = DataReader.merge_intervals(unavailability_ranges)
+
         if not availability_ranges:
             status = Status.NONE
         elif not unavailability_ranges and availability_ranges[0].from_date <= read_criteria.from_date and availability_ranges[-1].to_date >= read_criteria.to_date:
@@ -424,22 +426,27 @@ class ChainedDataReader(DateRangeSourceDataReader):
         else:
             self.next = next
     
+    Instrumentation.trace("ChainedDataReader.read")
     def read(self, criteria: ReaderDateCriteria) -> pd.DataFrame:
         # check has data for date range
         availability: ReaderDataAvailabilityStatus = self.has_data(criteria)
         
         if availability.status == Status.COMPLETE:
+            Instrumentation.info(f"Data availability {self.__class__}: {str(availability.status)}, criteria: {str(criteria)}")
             data = self.read_data(criteria)
         elif availability.status == Status.NONE or availability.status == Status.UKNOWN:
+            Instrumentation.info(f"Data availability {self.__class__}: {str(availability.status)}, criteria: {str(criteria)}")
             data = self.next.read(criteria)
             if not data.empty:
                 #data = self.post_read_data(data)
                 self.on_received_more_data(data)
         elif availability.status == Status.PARTIAL:
+            Instrumentation.info(f"{self.__class__} -> Data availability {str(availability.status)}, criteria: {str(criteria)}")
             available_data = self.read_data(criteria)
             unavailable_data: list[pd.DataFrame] = []
             
             for date_range in availability.unavailability_ranges:
+                Instrumentation.info(f"{self.__class__} -> reading unavailability range: {str(criteria)}")
                 data = self.next.read(date_range)
                 if not data.empty:
                     unavailable_data.append(data)
