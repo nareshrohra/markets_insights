@@ -77,6 +77,9 @@ class Instrumentation:
 
         return decorator
 
+    def change_level(instrumentation_level: int = None):
+        global InstrumentationLevel
+        InstrumentationLevel = instrumentation_level
 
 class Trace:
     def __init__(self, name):

@@ -501,7 +501,7 @@ class MemoryCachedDataReader(CachedDataReader):
         existing_data = self.cached_data
         self.cached_data = pd.concat([existing_data, new_data])
         
-        self.cached_data.sort_values(BaseColumns.Date)
+        self.cached_data.sort_values(BaseColumns.Date, inplace=True)
         if self.options.data_availability is None:
             self.options.data_availability = []
 
