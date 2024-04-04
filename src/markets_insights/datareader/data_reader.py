@@ -446,7 +446,7 @@ class ChainedDataReader(DateRangeSourceDataReader):
             unavailable_data: list[pd.DataFrame] = []
             
             for date_range in availability.unavailability_ranges:
-                Instrumentation.debug(f"{self.__class__} -> reading unavailability range: {str(criteria)}")
+                Instrumentation.debug(f"{self.__class__} -> reading unavailability range: {str(date_range)}")
                 data = self.next.read(date_range)
                 if not data.empty:
                     unavailable_data.append(data)
