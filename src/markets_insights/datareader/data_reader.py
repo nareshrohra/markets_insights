@@ -232,7 +232,7 @@ class DataReader:
         )
 
         if not os.path.exists(output_file_path):
-            Instrumentation.debug(f"Downloading data for {for_date}")
+            Instrumentation.debug(f"Downloading data for {for_date.strftime('%Y, %m, %d')}")
             url = self.options.url_template.substitute(**({**date_parts, **filenames}))
 
             Instrumentation.debug(url)
