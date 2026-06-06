@@ -1,0 +1,10 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "py": true,
+        "/^python --version$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "conda": true
+    }
+}

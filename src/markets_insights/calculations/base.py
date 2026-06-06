@@ -386,7 +386,7 @@ class RsiCalculationWorker(CalculationWorker):
             result = data.groupby(self.get_group_cols(data.columns), group_keys=True).apply(
                 self.calculate_rsi
             )
-            return result.reset_index(drop=True)
+            return result.reset_index(drop=False)
 
 
 class StochRsiCalculationWorker(CalculationWorker):
