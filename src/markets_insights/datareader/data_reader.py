@@ -638,7 +638,6 @@ class BhavCopyOldReader(SingleDaySourceDataReader):
         }
 
     def sanitize_data(self, data):
-        data = data.drop(columns=["XpryDt", "FininstrmActlXpryDt", "StrkPric", "OptnTp", "OpnIntrst", "ChngInOpnIntrst", "Rmks", "Rsvd1", "Rsvd2", "Rsvd3", "Rsvd4"])
         return data[data["SERIES"] == "EQ"].reset_index(drop=True)
 
 class BhavCopyNewReader(SingleDaySourceDataReader):
@@ -683,10 +682,11 @@ class BhavCopyNewReader(SingleDaySourceDataReader):
         }
 
     def sanitize_data(self, data):
+        data = data.drop(columns=["XpryDt", "FininstrmActlXpryDt", "StrkPric", "OptnTp", "OpnIntrst", "ChngInOpnIntrst", "Rmks", "Rsvd1", "Rsvd2", "Rsvd3", "Rsvd4"])
         return data[data["SctySrs"] == "EQ"].reset_index(drop=True)
 
 
-class BhavCopyDataReader(SingleDaySourceDataReader):
+class BhavCopyReader(SingleDaySourceDataReader):
     def __init__(self):
         super().__init__()
         self.name = "nse_equities"

@@ -8,7 +8,7 @@ sys.path.append(code_dir)
 from markets_insights.core.environment import Environment
 from datetime import date, timedelta
 import pandas as pd
-from markets_insights.datareader.data_reader import BhavCopyDataReader, DateRangeCriteria
+from markets_insights.datareader.data_reader import BhavCopyReader, DateRangeCriteria
 from markets_insights.dataprocess.data_processor import HistoricalDataProcessor, MultiDataCalculationPipelines, CalculationPipelineBuilder, HistoricalDataProcessOptions
 from markets_insights.calculations.base import DatePartsCalculationWorker
 
@@ -24,7 +24,7 @@ def get_data():
     global histDataProcessor
     
     # Create reader and processor
-    reader = BhavCopyDataReader()
+    reader = BhavCopyReader()
     options = HistoricalDataProcessOptions(include_monthly_data=False, include_annual_data=False)
     histDataProcessor = HistoricalDataProcessor(options)
 
