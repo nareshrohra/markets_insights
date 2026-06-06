@@ -388,6 +388,7 @@ class HistoricalDataProcessor(DataProcessor):
 
         Instrumentation.info(f"Reading data from {from_date} to {to_date}")
         read_data = dateRangeReader.read(DateRangeCriteria(from_date, to_date))
+        read_data = read_data.loc[:, ~read_data.columns.duplicated()]
         
         if not read_data.empty:
             if save_to_file == True:

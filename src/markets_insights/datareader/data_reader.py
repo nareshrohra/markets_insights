@@ -597,7 +597,7 @@ class ArithmaticOpReader(DataReader):
             return pd.DataFrame()
 
 
-class BhavCopyReader(SingleDaySourceDataReader):
+class BhavCopyOldReader(SingleDaySourceDataReader):
     def __init__(self):
         super().__init__()
         self.name = "nse_equities"
@@ -634,12 +634,79 @@ class BhavCopyReader(SingleDaySourceDataReader):
             "LOW": BaseColumns.Low,
             "CLOSE": BaseColumns.Close,
             "TOTTRDQTY": BaseColumns.Volume,
-            "TOTTRDVAL": BaseColumns.Turnover,
+            "TOTTRDVAL": BaseColumns.Turnover
         }
 
     def sanitize_data(self, data):
+        data = data.drop(columns=["XpryDt", "FininstrmActlXpryDt", "StrkPric", "OptnTp", "OpnIntrst", "ChngInOpnIntrst", "Rmks", "Rsvd1", "Rsvd2", "Rsvd3", "Rsvd4"])
         return data[data["SERIES"] == "EQ"].reset_index(drop=True)
 
+class BhavCopyNewReader(SingleDaySourceDataReader):
+    def __init__(self):
+        super().__init__()
+        self.name = "nse_equities"
+        self.options.col_prefix = "Cash-"
+        __base_url = "https://archives.nseindia.com/content/cm/"
+        self.options.data_availability = [DateRangeCriteria(date.fromisoformat("2016-01-01"), date.today())]
+        self.options.url_template = Template(
+            __base_url + "$download_filename"
+        )
+        self.options.output_path_template = Template(
+            f"$DataBaseDir/$RawDataDir/$BhavDataDir/$download_filename"
+        )
+        self.options.unzip_path_template = Template(
+            "$DataBaseDir/$RawDataDir/$BhavDataDir/$download_filename_wo_ext"
+        )
+        self.options.primary_data_path_template = Template(
+            "$DataBaseDir/$RawDataDir/$BhavDataDir/$download_filename_wo_ext/$primary_data_filename"
+        )
+
+    def get_filenames(self, for_date):
+        __formatted_date = for_date.strftime("%Y%m%d").upper()
+        return {
+            "download_filename_wo_ext": f"BhavCopy_NSE_CM_0_0_0_{__formatted_date}_F_0000.csv",
+            "download_filename": f"BhavCopy_NSE_CM_0_0_0_{__formatted_date}_F_0000.csv.zip",
+            "primary_data_filename": f"BhavCopy_NSE_CM_0_0_0_{__formatted_date}_F_0000.csv",
+        }
+
+    def get_column_name_mappings(self):
+        return {
+            "TradDt": BaseColumns.Date,
+            "TckrSymb": BaseColumns.Identifier,
+            "PrvsClsgPric": BaseColumns.PreviousClose,
+            "OpnPric": BaseColumns.Open,
+            "HghPric": BaseColumns.High,
+            "LwPric": BaseColumns.Low,
+            "ClsPric": BaseColumns.Close,
+            "TtlTradgVol": BaseColumns.Volume,
+            "TtlTrfVal": BaseColumns.Turnover,
+        }
+
+    def sanitize_data(self, data):
+        return data[data["SctySrs"] == "EQ"].reset_index(drop=True)
+
+
+class BhavCopyDataReader(SingleDaySourceDataReader):
+    def __init__(self):
+        super().__init__()
+        self.name = "nse_equities"
+        self.options.col_prefix = "Cash-"
+        self.old_reader = BhavCopyOldReader()
+        self.new_reader = BhavCopyNewReader()
+        self.old_cutoff_date = pd.Timestamp(2024, 7, 8)
+    
+    def read(self, criteria: ReaderDateCriteria):
+        if criteria.for_date < self.old_cutoff_date:
+            return self.old_reader.read(criteria)
+        else:
+            return self.new_reader.read(criteria)
+    
+    def has_data(self, criteria: ReaderDateCriteria):
+        if criteria.for_date < self.old_cutoff_date:
+            return self.old_reader.has_data(criteria)
+        else:
+            return self.new_reader.has_data(criteria)
+    
 
 class NseIndicesNewReader(SingleDaySourceDataReader):
     def __init__(self):

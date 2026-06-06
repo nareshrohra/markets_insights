@@ -374,6 +374,10 @@ class RsiCalculationWorker(CalculationWorker):
         super().__init__(time_window = int(time_window))
         self._columns.append(CalculatedColumns.RelativeStrengthIndex)
 
+    def get_group_cols(self, columns: list[str]) -> list[str]:
+        group_columns: list[str] = [DerivativesBaseColumns.Identifier]
+        return group_columns
+    
     def calculate_rsi(self, group):
         group[CalculatedColumns.RelativeStrengthIndex] = ta.rsi(
             group[BaseColumns.Close]
